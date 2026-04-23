@@ -24,7 +24,9 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
   }
 
   void _loadEntries() {
-    _entriesFuture = DataService.overtimeEntries;
+    setState(() {
+      _entriesFuture = DataService.overtimeEntries;
+    });
   }
 
   void _startEdit(OvertimeEntry entry) {
@@ -42,7 +44,10 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
   }
 
   void _saveEdit(String id) async {
-    await DataService.updateOvertime(_edits[id]!);
+    final updatedEntry = _edits[id];
+    if (updatedEntry == null) return;
+
+    await DataService.updateOvertime(updatedEntry);
     setState(() {
       _editingIds.remove(id);
       _edits.remove(id);
@@ -126,61 +131,73 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Clock Num')),
-                DataColumn(label: Text('Employee Name')),
-                DataColumn(label: Text('Date')),
-                DataColumn(label: Text('Shift Type')),
-                DataColumn(label: Text('OT Type')),
-                DataColumn(label: Text('Start Time')),
-                DataColumn(label: Text('End Time')),
-                DataColumn(label: Text('Hours')),
-                DataColumn(label: Text('Department')),
-                DataColumn(label: Text('Reason')),
-                DataColumn(label: Text('Status')),
-                DataColumn(label: Text('Actions')),
-              ],
-              rows: filteredEntries.map((entry) {
-                final isEditing = _editingIds.contains(entry.id);
-                final editEntry = _edits[entry.id] ?? entry;
-                return DataRow(cells: [
-                  DataCell(isEditing ? TextFormField(initialValue: editEntry.clockNum, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(clockNum: v))) : Text(entry.clockNum)),
-                  DataCell(isEditing ? TextFormField(initialValue: editEntry.employeeName, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(employeeName: v))) : Text(entry.employeeName)),
-                  DataCell(isEditing ? TextFormField(initialValue: DateFormat('yyyy-MM-dd').format(editEntry.date), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(date: DateTime.parse(v)))) : Text(DateFormat('yyyy-MM-dd').format(entry.date))),
-                  DataCell(isEditing ? DropdownButtonFormField<String>(
-                    value: editEntry.shiftType,
-                    items: const ['Day', 'Night', 'Custom'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(shiftType: v!)),
-                  ) : Text(entry.shiftType)),
-                  DataCell(isEditing ? DropdownButtonFormField<String>(
-                    value: editEntry.overtimeType,
-                    items: const ['Normal Time', '1.5 X 10 + 2 X 2', '2 X 12', 'Standby'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(overtimeType: v!)),
-                  ) : Text(entry.overtimeType)),
-                  DataCell(isEditing ? TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.startTime), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(startTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(v.split(':')[0]), int.parse(v.split(':')[1]))))) : Text(DateFormat('HH:mm').format(entry.startTime))),
-                  DataCell(isEditing ? TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.endTime), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(endTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(v.split(':')[0]), int.parse(v.split(':')[1]))))) : Text(DateFormat('HH:mm').format(entry.endTime))),
-                  DataCell(Text(entry.hours.toStringAsFixed(1))),
-                  DataCell(isEditing ? TextFormField(initialValue: editEntry.department, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(department: v))) : Text(entry.department)),
-                  DataCell(isEditing ? TextFormField(initialValue: editEntry.reason, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(reason: v))) : Text(entry.reason)),
-                  DataCell(isEditing ? DropdownButtonFormField<String>(
-                    value: editEntry.status,
-                    items: const ['Pending', 'Approved', 'Cancelled'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(status: v!)),
-                  ) : Text(entry.status)),
-                  DataCell(Row(
-                    children: [
-                      if (isEditing) ...[
-                        IconButton(icon: const Icon(Icons.save), onPressed: () => _saveEdit(entry.id)),
-                        IconButton(icon: const Icon(Icons.cancel), onPressed: () => _cancelEdit(entry.id)),
-                      ] else ...[
-                        IconButton(icon: const Icon(Icons.edit), onPressed: () => _startEdit(entry)),
-                        IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteEntry(entry.id)),
-                      ],
+                    columns: const [
+                      DataColumn(label: Text('Clock Num')),
+                      DataColumn(label: Text('Employee Name')),
+                      DataColumn(label: Text('Date')),
+                      DataColumn(label: Text('Shift Type')),
+                      DataColumn(label: Text('OT Type')),
+                      DataColumn(label: Text('Start Time')),
+                      DataColumn(label: Text('End Time')),
+                      DataColumn(label: Text('Hours')),
+                      DataColumn(label: Text('Department')),
+                      DataColumn(label: Text('Reason')),
+                      DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Actions')),
                     ],
-                  )),
-                ]);
-              }).toList(),
-            ),
+                    rows: filteredEntries.map((entry) {
+                      final isEditing = _editingIds.contains(entry.id);
+                      final editEntry = _edits[entry.id] ?? entry;
+                      return DataRow(cells: [
+                        DataCell(isEditing 
+                          ? SizedBox(width: 80, child: TextFormField(initialValue: editEntry.clockNum, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(clockNum: v)))) 
+                          : Text(entry.clockNum)),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 120, child: TextFormField(initialValue: editEntry.employeeName, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(employeeName: v)))) 
+                          : Text(entry.employeeName)),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 100, child: TextFormField(initialValue: DateFormat('yyyy-MM-dd').format(editEntry.date), onChanged: (v) { try { setState(() => _edits[entry.id] = editEntry.copyWith(date: DateTime.parse(v))); } catch (_) {} })) 
+                          : Text(DateFormat('yyyy-MM-dd').format(entry.date))),
+                        DataCell(isEditing 
+                          ? DropdownButtonFormField<String>(value: editEntry.shiftType, items: const ['Day', 'Night', 'Custom'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(shiftType: v!))) 
+                          : Text(entry.shiftType)),
+                        DataCell(isEditing 
+                          ? DropdownButtonFormField<String>(value: editEntry.overtimeType, items: const ['Normal Time', '1.5 X 10 + 2 X 2', '2 X 12', 'Standby'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(overtimeType: v!))) 
+                          : Text(entry.overtimeType)),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 70, child: TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.startTime), onChanged: (v) { try { final p = v.split(':'); setState(() => _edits[entry.id] = editEntry.copyWith(startTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(p[0]), int.parse(p[1])))); } catch (_) {} })) 
+                          : Text(DateFormat('HH:mm').format(entry.startTime))),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 70, child: TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.endTime), onChanged: (v) { try { final p = v.split(':'); setState(() => _edits[entry.id] = editEntry.copyWith(endTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(p[0]), int.parse(p[1])))); } catch (_) {} })) 
+                          : Text(DateFormat('HH:mm').format(entry.endTime))),
+                        DataCell(Text(entry.hours.toStringAsFixed(1))),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 80, child: TextFormField(initialValue: editEntry.department, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(department: v)))) 
+                          : Text(entry.department)),
+                        DataCell(isEditing 
+                          ? SizedBox(width: 150, child: TextFormField(initialValue: editEntry.reason, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(reason: v)))) 
+                          : Text(entry.reason, overflow: TextOverflow.ellipsis)),
+                        DataCell(isEditing 
+                          ? DropdownButtonFormField<String>(value: editEntry.status, items: const ['Pending', 'Approved', 'Cancelled'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(status: v!))) 
+                          : Text(entry.status)),
+                        DataCell(Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isEditing) ...[
+                              IconButton(icon: const Icon(Icons.save, size: 18), onPressed: () => _saveEdit(entry.id)),
+                              IconButton(icon: const Icon(Icons.cancel, size: 18), onPressed: () => _cancelEdit(entry.id)),
+                            ] else ...[
+                              IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _startEdit(entry)),
+                              IconButton(icon: const Icon(Icons.delete, size: 18), onPressed: () => _deleteEntry(entry.id)),
+                            ],
+                          ],
+                        )),
+                      ]);
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),

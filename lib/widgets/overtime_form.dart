@@ -24,6 +24,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
   late TextEditingController _clockController;
   late TextEditingController _reasonController;
   late TextEditingController _newReasonController;
+  late TextEditingController _clockFieldController;
   String _employeeName = '';
 
   String _press = 'Badenia';
@@ -33,10 +34,27 @@ class _OvertimeFormState extends State<OvertimeForm> {
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   DateTime _endDate = DateTime.now();
   TimeOfDay _endTime = const TimeOfDay(hour: 18, minute: 0);
-  String _department = 'PostPress';
+  String _department = 'Post Press';
 
   final List<String> _presses = ['Badenia', 'Wifag', 'Aurora', ''];
-  final List<String> _departments = ['Pressroom', 'PostPress', 'PrePress', 'Electrical', 'Mechanical'];
+  final List<String> _departments = [
+    'Pressroom',
+    'Post Press',
+    'Pre Press',
+    'Electrical',
+    'Mechanical',
+    'Workshop',
+    'Stores',
+    'Lurgi',
+    'Ink Factory',
+    'General'
+  ];
+
+  String _normalizeDepartment(String dept) {
+    // Convert to title case for consistency
+    if (dept.isEmpty) return dept;
+    return dept[0].toUpperCase() + dept.substring(1).toLowerCase();
+  }
   final List<String> _overtimeTypes = [
     'Normal Time',
     '1.5 X 10 + 2 X 2',
@@ -57,18 +75,32 @@ class _OvertimeFormState extends State<OvertimeForm> {
   @override
   void initState() {
     super.initState();
+    _initializeControllers();
+    _loadEmployeesFromFirebase();
+  }
+
+  @override
+  void didUpdateWidget(OvertimeForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialEntry != widget.initialEntry) {
+      _initializeControllers();
+    }
+  }
+
+  void _initializeControllers() {
     final entry = widget.initialEntry;
     _duController = TextEditingController(text: entry?.duNumber ?? '');
     _clockController = TextEditingController(text: entry?.clockNum ?? '');
     _reasonController = TextEditingController(text: entry?.reason ?? '');
     _newReasonController = TextEditingController();
+    _clockFieldController = TextEditingController(text: entry?.clockNum ?? '');
     _employeeName = entry?.employeeName ?? '';
 
     if (entry != null) {
       _press = entry.press;
       _shiftType = entry.shiftType;
       _overtimeType = entry.overtimeType;
-      _department = entry.department;
+      _department = _normalizeDepartment(entry.department);
       _startDate = entry.startTime;
       _startTime = TimeOfDay.fromDateTime(entry.startTime);
       _endDate = entry.endTime;
@@ -77,8 +109,6 @@ class _OvertimeFormState extends State<OvertimeForm> {
     } else {
       _setDefaultTimesForShift('Day');
     }
-
-    _loadEmployeesFromFirebase();
   }
 
   Future<void> _loadEmployeesFromFirebase() async {
@@ -98,10 +128,10 @@ class _OvertimeFormState extends State<OvertimeForm> {
           final emp = _employees.firstWhereOrNull((e) => e['clock'] == _clockController.text);
           if (emp == null) {
             _employeeName = '';
-            _department = 'PostPress'; // Reset to default if not found
+            _department = 'Post Press'; // Reset to default if not found
           } else {
             _employeeName = emp['name']!;
-            _department = emp['department']!;
+            _department = _normalizeDepartment(emp['department']!);
           }
         }
         print('Loaded ${_employees.length} employees (filtered): $_employees');
@@ -162,6 +192,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     _clockController.dispose();
     _reasonController.dispose();
     _newReasonController.dispose();
+    _clockFieldController.dispose();
     super.dispose();
   }
 
@@ -216,16 +247,26 @@ class _OvertimeFormState extends State<OvertimeForm> {
                 Expanded(
                   child: Autocomplete<String>(
                     optionsMaxHeight: 200,
-                    fieldViewBuilder: (context, controller, focusNode, onEditingComplete) => TextFormField(
-                      controller: _clockController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Clock Number',
-                        border: OutlineInputBorder(),
-                      ),
-                      onEditingComplete: onEditingComplete,
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                    ),
+                    fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                      // Sync the Autocomplete's controller with our _clockController
+                      textEditingController.addListener(() {
+                        _clockController.text = textEditingController.text;
+                      });
+                      // Set initial value if editing
+                      if (_clockController.text.isNotEmpty && textEditingController.text.isEmpty) {
+                        textEditingController.text = _clockController.text;
+                      }
+                      return TextFormField(
+                        controller: textEditingController,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Clock Number',
+                          border: OutlineInputBorder(),
+                        ),
+                        onFieldSubmitted: (value) => onFieldSubmitted(),
+                        validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      );
+                    },
                     optionsBuilder: (TextEditingValue textEditingValue) {
                       if (textEditingValue.text.isEmpty) return [];
                       return _employees.where((emp) =>
@@ -241,7 +282,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                       setState(() {
                         _clockController.text = clock;
                         _employeeName = name;
-                        _department = dept;
+                        _department = _normalizeDepartment(dept);
                       });
                     },
                   ),
@@ -412,7 +453,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _department,
+                    value: _departments.contains(_department) ? _department : 'Post Press',
                     decoration: const InputDecoration(
                       labelText: 'Department',
                       border: OutlineInputBorder(),
@@ -502,7 +543,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                       _shiftType = 'Day';
                       _overtimeType = 'Normal Time';
                       _press = 'Badenia';
-                      _department = 'PostPress';
+                      _department = 'Post Press';
                       _setDefaultTimesForShift('Day');
                     });
                   },

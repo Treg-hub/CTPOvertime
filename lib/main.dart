@@ -8,6 +8,7 @@ import 'package:ctp_overtime_tracker/screens/jobs_screen.dart';
 import 'package:ctp_overtime_tracker/screens/job_analysis_screen.dart';
 import 'package:ctp_overtime_tracker/screens/calendar_view_screen.dart';
 import 'package:ctp_overtime_tracker/screens/dashboard_screen.dart';
+import 'package:ctp_overtime_tracker/screens/approval_screen.dart';
 import 'package:ctp_overtime_tracker/screens/settings_screen.dart';
 
 void main() async {
@@ -30,7 +31,7 @@ void main() async {
 }
 
 class ThemeProvider extends ChangeNotifier {
-  bool _isDark = false;
+  bool _isDark = true;
 
   bool get isDark => _isDark;
 
@@ -74,6 +75,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const JobsScreen(),
     const JobAnalysisScreen(),
     const CalendarViewScreen(),
+    const ApprovalScreen(),
     const SettingsScreen(),
   ];
 
@@ -126,6 +128,10 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_month),
             label: 'Calendar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.task_alt),
+            label: 'Approval',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings),

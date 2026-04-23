@@ -67,6 +67,18 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
     return breakdown;
   }
 
+
+
+  String _getTooltipForDay(DateTime day) {
+    final entries = _getEntriesForDay(day);
+    if (entries.isEmpty) return 'No overtime';
+    final tooltipEntries = entries.take(20).map((e) => '${e.clockNum} - ${e.employeeName} - ${e.department}').join('\n');
+    if (entries.length > 20) {
+      return '$tooltipEntries\n+${entries.length - 20} more';
+    }
+    return tooltipEntries;
+  }
+
   void _showDayDetails(DateTime day) {
     final entries = _getEntriesForDay(day);
     final breakdown = _getDepartmentBreakdown(day);
@@ -142,7 +154,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade100,
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.blue.shade800 : Colors.blue.shade100,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text('${e.value} people', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -215,6 +227,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
             },
             calendarFormat: _calendarFormat,
             startingDayOfWeek: StartingDayOfWeek.monday,
+            rowHeight: 100, // Increase vertical spacing between weeks
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: false,
               weekendTextStyle: TextStyle(color: Colors.red),
@@ -222,68 +235,86 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
             calendarBuilders: CalendarBuilders(
               defaultBuilder: (context, day, focusedDay) {
                 final entries = _getEntriesForDay(day);
-                if (entries.isEmpty) return null;
-                final totalHours = _getTotalHoursForDay(day);
-                final totalPeople = entries.length;
-                return Tooltip(
-                  message: 'Hours: ${totalHours.toStringAsFixed(1)}, People: $totalPeople',
-                  child: Container(
+                if (entries.isEmpty) {
+                  return Container(
                     margin: const EdgeInsets.all(4),
                     alignment: Alignment.center,
                     child: Text(
                       '${day.day}',
-                      style: TextStyle(color: focusedDay ? Colors.black : Colors.grey),
+                      style: TextStyle(
+                        color: isSameDay(day, _focusedDay) ? Colors.black : Colors.grey,
+                      ),
                     ),
-                  ),
-                );
-              },
-              markerBuilder: (context, date, events) {
-                final entries = _getEntriesForDay(date);
-                if (entries.isEmpty) return null;
+                  );
+                }
 
                 final dayCount = entries.where((e) => e.shiftType == 'Day').length;
                 final nightCount = entries.where((e) => e.shiftType == 'Night').length;
-                final totalPeople = entries.length;
-                final scale = 1 + totalPeople * 0.1;
+                final totalHours = _getTotalHoursForDay(day);
 
-                return Positioned(
-                  bottom: 4,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (dayCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade600,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text('☀️$dayCount', style: const TextStyle(fontSize: 12, color: Colors.white)),
-                            ),
-                          if (nightCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.indigo.shade600,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text('🌙$nightCount', style: const TextStyle(fontSize: 12, color: Colors.white)),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 4 * scale, vertical: 1 * scale),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade700.withOpacity(0.7 + totalPeople * 0.03),
-                          borderRadius: BorderRadius.circular(8),
+                return Tooltip(
+                  message: _getTooltipForDay(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            color: isSameDay(day, _focusedDay) ? Colors.black : Colors.grey,
+                            fontSize: 16,
+                          ),
                         ),
-                        child: Text('$totalPeople', style: TextStyle(fontSize: 10 * scale, color: Colors.white)),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (dayCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade600,
+                                  border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black, width: 1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text('☀️$dayCount', style: const TextStyle(fontSize: 16, color: Colors.white)),
+                              ),
+                            if (nightCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.indigo.shade600,
+                                  border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black, width: 1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text('🌙$nightCount', style: const TextStyle(fontSize: 16, color: Colors.white)),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 1),
+                        // Hours bar
+                        Container(
+                          height: 6,
+                          width: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: (totalHours / 24).clamp(0.0, 1.0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -300,7 +331,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade100,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.orange.shade800 : Colors.orange.shade100,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text('☀️ Day Shift'),
@@ -309,7 +340,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.indigo.shade100,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.indigo.shade800 : Colors.indigo.shade100,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text('🌙 Night Shift'),

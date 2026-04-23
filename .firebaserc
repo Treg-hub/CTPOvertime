@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ctp-job-cards"
+  },
+  "targets": {
+    "ctp-job-cards": {
+      "hosting": {
+        "ctp-overtime": [
+          "ctp-overtime"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
