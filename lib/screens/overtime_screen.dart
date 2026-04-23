@@ -15,6 +15,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
 
   void _selectEntry(OvertimeEntry entry) {
+    print('Selected entry: ${entry.employeeName} id: ${entry.id}');
     setState(() {
       _selectedEntry = entry;
     });
@@ -79,112 +80,223 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
           return Center(child: Text('Error loading overtime entries: ${snapshot.error}'));
         }
         final entries = snapshot.data ?? [];
-        return Row(
-          children: [
-            // LEFT: Form
-            Expanded(
-              flex: 5,
-              child: Card(
-                margin: const EdgeInsets.all(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 800;
+            return isSmall ? Column(
+              children: [
+                // TOP: Form
+                Expanded(
+                  flex: 5,
+                  child: Card(
+                    margin: const EdgeInsets.all(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              ElevatedButton.icon(
-                                onPressed: _addNew,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Add New'),
+                              Text(
+                                _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
+                                style: Theme.of(context).textTheme.headlineSmall,
                               ),
-                              const SizedBox(width: 8),
-                              OutlinedButton.icon(
-                                onPressed: _selectedEntry != null ? _duplicate : null,
-                                icon: const Icon(Icons.copy),
-                                label: const Text('Duplicate'),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _addNew,
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add New'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _selectedEntry != null ? _duplicate : null,
+                                    icon: const Icon(Icons.copy),
+                                    label: const Text('Duplicate'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
+                          const SizedBox(height: 24),
+                          Expanded(
+                            child: OvertimeForm(
+                              initialEntry: _selectedEntry,
+                              onSave: _saveEntry,
+                            ),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      Expanded(
-                        child: OvertimeForm(
-                          initialEntry: _selectedEntry,
-                          onSave: _saveEntry,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
 
-            // RIGHT: List
-            Expanded(
-              flex: 6,
-              child: Card(
-                margin: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Text(
-                            'Overtime List (${entries.length})',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const Spacer(),
-                          // Department filter (for logged-in user's department)
-                          DropdownButton<String>(
-                            value: 'All',
-                            items: const [
-                              DropdownMenuItem(value: 'All', child: Text('All Depts')),
-                              DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
-                              DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
+                // BOTTOM: List
+                Expanded(
+                  flex: 6,
+                  child: Card(
+                    margin: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Overtime List (${entries.length})',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const Spacer(),
+                              // Department filter (for logged-in user's department)
+                              DropdownButton<String>(
+                                value: 'All',
+                                items: const [
+                                  DropdownMenuItem(value: 'All', child: Text('All Depts')),
+                                  DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
+                                  DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
+                                ],
+                                onChanged: (value) {
+                                  // TODO: Filter the list based on logged-in user's department
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Filtered to $value (demo)')),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.download),
+                                onPressed: () {
+                                  // TODO: Export CSV
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Export feature coming soon')),
+                                  );
+                                },
+                                tooltip: 'Export CSV',
+                              ),
                             ],
-                            onChanged: (value) {
-                              // TODO: Filter the list based on logged-in user's department
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Filtered to $value (demo)')),
-                              );
-                            },
                           ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.download),
-                            onPressed: () {
-                              // TODO: Export CSV
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Export feature coming soon')),
-                              );
-                            },
-                            tooltip: 'Export CSV',
+                        ),
+                        Expanded(
+                          child: OvertimeList(
+                            entries: entries,
+                            onSelect: _selectEntry,
+                            selectedId: _selectedEntry?.id,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ) : Row(
+              children: [
+                // LEFT: Form
+                Expanded(
+                  flex: 5,
+                  child: Card(
+                    margin: const EdgeInsets.all(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
+                                style: Theme.of(context).textTheme.headlineSmall,
+                              ),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _addNew,
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add New'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _selectedEntry != null ? _duplicate : null,
+                                    icon: const Icon(Icons.copy),
+                                    label: const Text('Duplicate'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          Expanded(
+                            child: OvertimeForm(
+                              initialEntry: _selectedEntry,
+                              onSave: _saveEntry,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: OvertimeList(
-                        entries: entries,
-                        onSelect: _selectEntry,
-                        selectedId: _selectedEntry?.id,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ],
+
+                // RIGHT: List
+                Expanded(
+                  flex: 6,
+                  child: Card(
+                    margin: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Overtime List (${entries.length})',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const Spacer(),
+                              // Department filter (for logged-in user's department)
+                              DropdownButton<String>(
+                                value: 'All',
+                                items: const [
+                                  DropdownMenuItem(value: 'All', child: Text('All Depts')),
+                                  DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
+                                  DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
+                                ],
+                                onChanged: (value) {
+                                  // TODO: Filter the list based on logged-in user's department
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Filtered to $value (demo)')),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.download),
+                                onPressed: () {
+                                  // TODO: Export CSV
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Export feature coming soon')),
+                                  );
+                                },
+                                tooltip: 'Export CSV',
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: OvertimeList(
+                            entries: entries,
+                            onSelect: _selectEntry,
+                            selectedId: _selectedEntry?.id,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );

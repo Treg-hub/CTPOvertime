@@ -31,6 +31,23 @@ class DataService {
     await _firestore.collection('overtime_entries').doc(entry.id).update(entry.toMap());
   }
 
+  static Future<void> deleteOvertime(String id) async {
+    await _firestore.collection('overtime_entries').doc(id).delete();
+  }
+
+  static Future<void> deleteJob(String id) async {
+    await _firestore.collection('jobs').doc(id).delete();
+  }
+
+  static Future<List<Map<String, String>>> getEmployees() async {
+    final entries = await overtimeEntries;
+    final unique = <String, String>{};
+    for (var e in entries) {
+      unique[e.clockNum] = e.employeeName;
+    }
+    return unique.entries.map((e) => {'clockNum': e.key, 'name': e.value}).toList();
+  }
+
   // Smart overlap calculation
   static Future<List<Map<String, dynamic>>> getOverlappingOvertime(Job job) async {
     List<Map<String, dynamic>> overlaps = [];

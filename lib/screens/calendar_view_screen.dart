@@ -16,6 +16,7 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
   DateTime? _selectedDay;
   final Map<DateTime, List<OvertimeEntry>> _overtimeByDate = {};
   String _filterDepartment = 'All';
+  CalendarFormat _calendarFormat = CalendarFormat.month;
 
   @override
   void initState() {
@@ -42,7 +43,11 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
 
   List<OvertimeEntry> _getEntriesForDay(DateTime day) {
     final dateKey = DateTime(day.year, day.month, day.day);
-    return _overtimeByDate[dateKey] ?? [];
+    var entries = _overtimeByDate[dateKey] ?? [];
+    if (_filterDepartment != 'All') {
+      entries = entries.where((e) => e.department == _filterDepartment).toList();
+    }
+    return entries;
   }
 
   int _getTotalPeopleForDay(DateTime day) {
@@ -169,13 +174,20 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
             children: [
               const Text('Overtime Calendar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
+              IconButton(
+                icon: Icon(_calendarFormat == CalendarFormat.month ? Icons.calendar_view_week : Icons.calendar_view_month),
+                onPressed: () => setState(() => _calendarFormat = _calendarFormat == CalendarFormat.month ? CalendarFormat.week : CalendarFormat.month),
+              ),
+              const SizedBox(width: 16),
               DropdownButton<String>(
                 value: _filterDepartment,
                 items: const [
                   DropdownMenuItem(value: 'All', child: Text('All Departments')),
+                  DropdownMenuItem(value: 'Pressroom', child: Text('Pressroom')),
                   DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
+                  DropdownMenuItem(value: 'PrePress', child: Text('PrePress')),
                   DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
-                  DropdownMenuItem(value: 'Superuser', child: Text('Superuser')),
+                  DropdownMenuItem(value: 'Mechanical', child: Text('Mechanical')),
                 ],
                 onChanged: (value) {
                   setState(() {
@@ -201,44 +213,76 @@ class _CalendarViewScreenState extends State<CalendarViewScreen> {
               });
               _showDayDetails(selectedDay);
             },
-            calendarFormat: CalendarFormat.month,
+            calendarFormat: _calendarFormat,
             startingDayOfWeek: StartingDayOfWeek.monday,
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: false,
               weekendTextStyle: TextStyle(color: Colors.red),
             ),
             calendarBuilders: CalendarBuilders(
+              defaultBuilder: (context, day, focusedDay) {
+                final entries = _getEntriesForDay(day);
+                if (entries.isEmpty) return null;
+                final totalHours = _getTotalHoursForDay(day);
+                final totalPeople = entries.length;
+                return Tooltip(
+                  message: 'Hours: ${totalHours.toStringAsFixed(1)}, People: $totalPeople',
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${day.day}',
+                      style: TextStyle(color: focusedDay ? Colors.black : Colors.grey),
+                    ),
+                  ),
+                );
+              },
               markerBuilder: (context, date, events) {
                 final entries = _getEntriesForDay(date);
                 if (entries.isEmpty) return null;
 
                 final dayCount = entries.where((e) => e.shiftType == 'Day').length;
                 final nightCount = entries.where((e) => e.shiftType == 'Night').length;
-                final totalHours = entries.fold(0.0, (sum, e) => sum + e.hours);
+                final totalPeople = entries.length;
+                final scale = 1 + totalPeople * 0.1;
 
                 return Positioned(
                   bottom: 4,
-                  child: Row(
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (dayCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text('☀️$dayCount', style: const TextStyle(fontSize: 10)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (dayCount > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade600,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text('☀️$dayCount', style: const TextStyle(fontSize: 12, color: Colors.white)),
+                            ),
+                          if (nightCount > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.shade600,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text('🌙$nightCount', style: const TextStyle(fontSize: 12, color: Colors.white)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 4 * scale, vertical: 1 * scale),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade700.withOpacity(0.7 + totalPeople * 0.03),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      if (nightCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text('🌙$nightCount', style: const TextStyle(fontSize: 10)),
-                        ),
+                        child: Text('$totalPeople', style: TextStyle(fontSize: 10 * scale, color: Colors.white)),
+                      ),
                     ],
                   ),
                 );

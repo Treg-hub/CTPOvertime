@@ -26,6 +26,26 @@ class _JobsScreenState extends State<JobsScreen> {
     });
   }
 
+  void _duplicate() async {
+    if (_selectedJob != null) {
+      final newJob = Job(
+        duNumber: _selectedJob!.duNumber,
+        jobName: '${_selectedJob!.jobName} (Duplicated)',
+        startDateTime: _selectedJob!.startDateTime,
+        endDateTime: _selectedJob!.endDateTime,
+        press: _selectedJob!.press,
+      );
+      await DataService.addJob(newJob);
+      setState(() {
+        _selectedJob = newJob;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job duplicated')),
+      );
+    }
+  }
+
   void _saveJob(Job job) async {
     if (_selectedJob == null) {
       await DataService.addJob(job);

@@ -66,4 +66,36 @@ class OvertimeEntry {
         reason: map['reason'],
         status: map['status'] ?? 'Pending',
       );
+
+  OvertimeEntry copyWith({
+    String? id,
+    String? duNumber,
+    String? clockNum,
+    String? employeeName,
+    String? press,
+    DateTime? date,
+    String? shiftType,
+    String? overtimeType,
+    DateTime? startTime,
+    DateTime? endTime,
+    String? department,
+    String? reason,
+    String? status,
+  }) {
+    return OvertimeEntry(
+      id: id ?? this.id,
+      duNumber: duNumber ?? this.duNumber,
+      clockNum: clockNum ?? this.clockNum,
+      employeeName: employeeName ?? this.employeeName,
+      press: press ?? this.press,
+      date: date ?? this.date,
+      shiftType: shiftType ?? this.shiftType,
+      overtimeType: overtimeType ?? this.overtimeType,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      department: department ?? this.department,
+      reason: reason ?? this.reason,
+      status: status ?? this.status,
+    );
+  }
 }

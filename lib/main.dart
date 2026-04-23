@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:ctp_overtime_tracker/firebase_options.dart';
+import 'firebase_options.dart';  
 import 'package:ctp_overtime_tracker/theme/app_theme.dart';
 import 'package:ctp_overtime_tracker/screens/overtime_screen.dart';
 import 'package:ctp_overtime_tracker/screens/jobs_screen.dart';
 import 'package:ctp_overtime_tracker/screens/job_analysis_screen.dart';
 import 'package:ctp_overtime_tracker/screens/calendar_view_screen.dart';
 import 'package:ctp_overtime_tracker/screens/dashboard_screen.dart';
+import 'package:ctp_overtime_tracker/screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    print('Firebase initialization error: $e');
+  }
+  
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
@@ -67,6 +74,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const JobsScreen(),
     const JobAnalysisScreen(),
     const CalendarViewScreen(),
+    const SettingsScreen(),
   ];
 
   @override
@@ -118,6 +126,10 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_month),
             label: 'Calendar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

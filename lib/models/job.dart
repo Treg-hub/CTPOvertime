@@ -34,4 +34,22 @@ class Job {
         endDateTime: (map['endDateTime'] as Timestamp).toDate(),
         press: map['press'],
       );
+
+  Job copyWith({
+    String? id,
+    String? duNumber,
+    String? jobName,
+    DateTime? startDateTime,
+    DateTime? endDateTime,
+    String? press,
+  }) {
+    return Job(
+      id: id ?? this.id,
+      duNumber: duNumber ?? this.duNumber,
+      jobName: jobName ?? this.jobName,
+      startDateTime: startDateTime ?? this.startDateTime,
+      endDateTime: endDateTime ?? this.endDateTime,
+      press: press ?? this.press,
+    );
+  }
 }
