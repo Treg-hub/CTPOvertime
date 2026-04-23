@@ -1,0 +1,19 @@
+{
+  "name": "ctp_overtime_tracker",
+  "version": "1.0.0",
+  "description": "**Browser-first Flutter Web app** for managing overtime with smart job overlap analysis.",
+  "main": "seed_overtime_only.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^13.8.0"
+  }
+}
