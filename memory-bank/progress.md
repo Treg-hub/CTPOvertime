@@ -6,20 +6,21 @@
 - Calendar: Improved tooltips (employee details, max 20), enhanced markers (larger pills, hours bar).
 - New settings menu on bottom nav with approval queue section, dedicated list screens with inline edit/delete (overtime, jobs).
 - Dashboard date range filter, per-person breakdown.
-- Overtime form improvements: clock dropdown autofill, field reorder, reason chips, fixed selection issues.
+- Overtime form improvements: clock dropdown autofill, field reorder, reason chips, fixed selection issues, audit fields (dateEntered, enteredBy).
 - Responsive layouts, status darker bg.
 - Jobs duplicate button.
 - Visual timeline in analysis, grouped by dept in ExpansionTiles (with totals), right column jobs list with total overlap hours (sorted descending).
+- Custom authentication: LoginScreen using employees collection, UserProvider, logout in app bar.
+- Audit trail: Date Entered and Entered By fields in all lists.
 
 ## What's Left to Build
-- User authentication (Firebase Auth).
 - Approve & Email to Wages (Cloud Functions + email).
 - Export to CSV/PDF.
 - Deploy to Firebase Hosting or web server.
-- Permissions for approval screen.
+- Permissions for approval screen (restrict tabs based on user role).
 
 ## Current Status
-Enhanced prototype with all requested features. Ready for production deployment.
+Enhanced prototype with all requested features including compact tables with always-visible action buttons, 25-entry limit with real-time updates, and optimized performance. Ready for production deployment.
 
 ## Known Issues
 - None reported.

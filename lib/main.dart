@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';  
+import 'firebase_options.dart';
 import 'package:ctp_overtime_tracker/theme/app_theme.dart';
+import 'package:ctp_overtime_tracker/models/user.dart';
 import 'package:ctp_overtime_tracker/screens/overtime_screen.dart';
 import 'package:ctp_overtime_tracker/screens/jobs_screen.dart';
 import 'package:ctp_overtime_tracker/screens/job_analysis_screen.dart';
@@ -10,6 +11,7 @@ import 'package:ctp_overtime_tracker/screens/calendar_view_screen.dart';
 import 'package:ctp_overtime_tracker/screens/dashboard_screen.dart';
 import 'package:ctp_overtime_tracker/screens/approval_screen.dart';
 import 'package:ctp_overtime_tracker/screens/settings_screen.dart';
+import 'package:ctp_overtime_tracker/screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,8 +25,11 @@ void main() async {
   }
   
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+      ],
       child: const CTPOverTimeTrackerApp(),
     ),
   );
@@ -41,19 +46,38 @@ class ThemeProvider extends ChangeNotifier {
   }
 }
 
+class UserProvider extends ChangeNotifier {
+  User? _currentUser;
+
+  User? get currentUser => _currentUser;
+
+  bool get isLoggedIn => _currentUser != null;
+
+  void login(User user) {
+    _currentUser = user;
+    notifyListeners();
+  }
+
+  void logout() {
+    _currentUser = null;
+    notifyListeners();
+  }
+}
+
 class CTPOverTimeTrackerApp extends StatelessWidget {
   const CTPOverTimeTrackerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final userProvider = Provider.of<UserProvider>(context);
 
     return MaterialApp(
       title: 'CTP Gravure Overtime',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.isDark ? ThemeMode.dark : ThemeMode.light,
-      home: const MainNavigation(),
+      home: userProvider.isLoggedIn ? const MainNavigation() : const LoginScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -82,6 +106,8 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final userProvider = Provider.of<UserProvider>(context);
+    final user = userProvider.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -93,10 +119,59 @@ class _MainNavigationState extends State<MainNavigation> {
             tooltip: 'Toggle Dark/Light Mode',
           ),
           const SizedBox(width: 16),
-          const CircleAvatar(
-            radius: 16,
-            backgroundColor: Colors.white,
-            child: Text('M', style: TextStyle(color: Colors.blue)),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'logout') {
+                userProvider.logout();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'user',
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(
+                        user?.name[0] ?? 'M',
+                        style: const TextStyle(color: Colors.blue),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(user?.name ?? 'Manager'),
+                        Text(
+                          user?.department ?? 'Department',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 20),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.blue.shade100,
+              child: Text(
+                user?.name[0] ?? 'M',
+                style: const TextStyle(color: Colors.blue),
+              ),
+            ),
           ),
           const SizedBox(width: 16),
         ],

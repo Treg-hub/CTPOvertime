@@ -15,6 +15,8 @@ class OvertimeEntry {
   final String department;
   final String reason;
   final String status; // Pending, Approved, Cancelled
+  final DateTime? dateEntered; // When entry was created
+  final String? enteredBy; // Who created the entry
 
   OvertimeEntry({
     String? id,
@@ -30,6 +32,8 @@ class OvertimeEntry {
     required this.department,
     required this.reason,
     this.status = 'Pending',
+    this.dateEntered,
+    this.enteredBy,
   }) : id = id ?? const Uuid().v4();
 
   double get hours {
@@ -49,6 +53,8 @@ class OvertimeEntry {
         'department': department,
         'reason': reason,
         'status': status,
+        'dateEntered': dateEntered != null ? Timestamp.fromDate(dateEntered!) : FieldValue.serverTimestamp(),
+        'enteredBy': enteredBy,
       };
 
   factory OvertimeEntry.fromMap(Map<String, dynamic> map, String id) => OvertimeEntry(
@@ -65,6 +71,8 @@ class OvertimeEntry {
         department: map['department'],
         reason: map['reason'],
         status: map['status'] ?? 'Pending',
+        dateEntered: map['dateEntered'] != null ? (map['dateEntered'] as Timestamp).toDate() : null,
+        enteredBy: map['enteredBy'],
       );
 
   OvertimeEntry copyWith({
@@ -81,6 +89,8 @@ class OvertimeEntry {
     String? department,
     String? reason,
     String? status,
+    DateTime? dateEntered,
+    String? enteredBy,
   }) {
     return OvertimeEntry(
       id: id ?? this.id,
@@ -96,6 +106,8 @@ class OvertimeEntry {
       department: department ?? this.department,
       reason: reason ?? this.reason,
       status: status ?? this.status,
+      dateEntered: dateEntered ?? this.dateEntered,
+      enteredBy: enteredBy ?? this.enteredBy,
     );
   }
 }

@@ -99,7 +99,7 @@ class _JobAnalysisScreenState extends State<JobAnalysisScreen> {
 
               // Job Selector - FIXED
               DropdownButtonFormField<String>(
-                value: _selectedJob?.id,
+                initialValue: _selectedJob?.id,
                 decoration: const InputDecoration(
                   labelText: 'Select Job',
                   border: OutlineInputBorder(),

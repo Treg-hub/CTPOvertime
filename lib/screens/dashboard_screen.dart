@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
-import 'package:intl/intl.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});

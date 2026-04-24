@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
+import 'package:ctp_overtime_tracker/services/data_service.dart';
+import 'package:ctp_overtime_tracker/main.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
@@ -27,7 +30,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
   late TextEditingController _clockFieldController;
   String _employeeName = '';
 
-  String _press = 'Badenia';
+  String _press = '';
   String _shiftType = 'Day';
   String _overtimeType = 'Normal Time';
   DateTime _startDate = DateTime.now();
@@ -62,11 +65,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     'Standby'
   ];
 
-  final List<String> _reasonPresets = [
-    'Sick Leave',
-    'Annual Leave',
-    'Run 3rd Machine',
-  ];
+  List<String> _reasonSuggestions = [];
 
   // Employees loaded from Firebase
   List<Map<String, String>> _employees = []; // [{name: "...", clock: "...", department: "..."}]
@@ -77,6 +76,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     super.initState();
     _initializeControllers();
     _loadEmployeesFromFirebase();
+    _loadUsedReasons();
   }
 
   @override
@@ -153,6 +153,21 @@ class _OvertimeFormState extends State<OvertimeForm> {
     }
   }
 
+  Future<void> _loadUsedReasons() async {
+    try {
+      final entries = await DataService.overtimeEntries;
+      setState(() {
+        _reasonSuggestions = entries.map((e) => e.reason).where((r) => r.trim().isNotEmpty).toSet().toList()..sort();
+      });
+    } catch (e) {
+      // If error, keep empty or use defaults
+      setState(() {
+        _reasonSuggestions = ['Sick Leave', 'Annual Leave', 'Run 3rd Machine'];
+      });
+      print('Error loading used reasons: $e');
+    }
+  }
+
   void _setDefaultTimesForShift(String shift) {
     setState(() {
       _shiftType = shift;
@@ -218,6 +233,8 @@ class _OvertimeFormState extends State<OvertimeForm> {
         department: _department,
         reason: _reasonController.text.trim(),
         status: widget.initialEntry?.status ?? 'Pending',
+        dateEntered: widget.initialEntry?.dateEntered ?? DateTime.now(),
+        enteredBy: widget.initialEntry?.enteredBy ?? context.read<UserProvider>().currentUser?.name,
       );
 
       widget.onSave(entry);
@@ -285,6 +302,24 @@ class _OvertimeFormState extends State<OvertimeForm> {
                         _department = _normalizeDepartment(dept);
                       });
                     },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Department
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _departments.contains(_department) ? _department : 'Post Press',
+                    decoration: const InputDecoration(
+                      labelText: 'Department',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _departments.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                    onChanged: (v) => setState(() => _department = v!),
                   ),
                 ),
               ],
@@ -360,7 +395,18 @@ class _OvertimeFormState extends State<OvertimeForm> {
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (picked != null) setState(() => _startDate = picked);
+                      if (picked != null) {
+                        setState(() {
+                          _startDate = picked;
+                          // Auto-update end date based on shift type
+                          if (_shiftType == 'Day') {
+                            _endDate = picked;
+                          } else if (_shiftType == 'Night') {
+                            _endDate = picked.add(const Duration(days: 1));
+                          }
+                          // Custom shift keeps current end date
+                        });
+                      }
                     },
                     child: InputDecorator(
                       decoration: const InputDecoration(
@@ -448,27 +494,20 @@ class _OvertimeFormState extends State<OvertimeForm> {
             ),
             const SizedBox(height: 16),
 
-            // Department & Reason
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _departments.contains(_department) ? _department : 'Post Press',
-                    decoration: const InputDecoration(
-                      labelText: 'Department',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _departments.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-                    onChanged: (v) => setState(() => _department = v!),
-                  ),
-                ),
-              ],
+            TextFormField(
+              controller: _reasonController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Reason for Overtime',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) => v!.isEmpty ? 'Please enter a reason' : null,
             ),
             const SizedBox(height: 16),
 
             Wrap(
               spacing: 8,
-              children: _reasonPresets.map((reason) => FilterChip(
+              children: _reasonSuggestions.map((reason) => FilterChip(
                 label: Text(reason),
                 selected: _reasonController.text == reason,
                 onSelected: (selected) {
@@ -496,26 +535,15 @@ class _OvertimeFormState extends State<OvertimeForm> {
                   icon: const Icon(Icons.add),
                   onPressed: () {
                     final newReason = _newReasonController.text.trim();
-                    if (newReason.isNotEmpty && !_reasonPresets.contains(newReason)) {
+                    if (newReason.isNotEmpty && !_reasonSuggestions.contains(newReason)) {
                       setState(() {
-                        _reasonPresets.add(newReason);
+                        _reasonSuggestions.add(newReason);
                         _newReasonController.clear();
                       });
                     }
                   },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _reasonController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Reason for Overtime',
-                border: OutlineInputBorder(),
-              ),
-              validator: (v) => v!.isEmpty ? 'Please enter a reason' : null,
             ),
             const SizedBox(height: 24),
 
@@ -542,7 +570,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                       _reasonController.clear();
                       _shiftType = 'Day';
                       _overtimeType = 'Normal Time';
-                      _press = 'Badenia';
+                      _press = '';
                       _department = 'Post Press';
                       _setDefaultTimesForShift('Day');
                     });

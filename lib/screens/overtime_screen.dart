@@ -5,7 +5,8 @@ import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_list.dart';
 
 class OvertimeScreen extends StatefulWidget {
-  const OvertimeScreen({super.key});
+  final OvertimeEntry? initialEntry;
+  const OvertimeScreen({super.key, this.initialEntry});
 
   @override
   State<OvertimeScreen> createState() => _OvertimeScreenState();
@@ -13,6 +14,13 @@ class OvertimeScreen extends StatefulWidget {
 
 class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
+  bool _isDuplicating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedEntry = widget.initialEntry;
+  }
 
   void _selectEntry(OvertimeEntry entry) {
     print('Selected entry: ${entry.employeeName} id: ${entry.id}');
@@ -29,6 +37,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
 
   void _duplicate() async {
     if (_selectedEntry != null) {
+      setState(() => _isDuplicating = true);
       final newEntry = OvertimeEntry(
         duNumber: _selectedEntry!.duNumber,
         clockNum: _selectedEntry!.clockNum,
@@ -40,10 +49,11 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
         startTime: _selectedEntry!.startTime,
         endTime: _selectedEntry!.endTime,
         department: _selectedEntry!.department,
-        reason: '${_selectedEntry!.reason} (Duplicated)',
+        reason: _selectedEntry!.reason,
       );
       await DataService.addOvertime(newEntry);
       setState(() {
+        _isDuplicating = false;
         _selectedEntry = newEntry;
       });
       if (!mounted) return;
@@ -71,7 +81,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<OvertimeEntry>>(
-      future: DataService.overtimeEntries,
+      future: DataService.getRecentOvertime(limit: 100), // Show more in main screen, sorted newest first
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -110,11 +120,27 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                                     label: const Text('Add New'),
                                   ),
                                   const SizedBox(width: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _selectedEntry != null ? _duplicate : null,
-                                    icon: const Icon(Icons.copy),
-                                    label: const Text('Duplicate'),
-                                  ),
+                                  _isDuplicating
+                                    ? ElevatedButton.icon(
+                                        onPressed: null,
+                                        icon: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ),
+                                        label: const Text('Duplicating'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      )
+                                    : OutlinedButton.icon(
+                                        onPressed: _selectedEntry != null ? _duplicate : null,
+                                        icon: const Icon(Icons.copy),
+                                        label: const Text('Duplicate'),
+                                      ),
                                 ],
                               ),
                             ],
@@ -216,11 +242,27 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                                     label: const Text('Add New'),
                                   ),
                                   const SizedBox(width: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _selectedEntry != null ? _duplicate : null,
-                                    icon: const Icon(Icons.copy),
-                                    label: const Text('Duplicate'),
-                                  ),
+                                  _isDuplicating
+                                    ? ElevatedButton.icon(
+                                        onPressed: null,
+                                        icon: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ),
+                                        label: const Text('Duplicating'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      )
+                                    : OutlinedButton.icon(
+                                        onPressed: _selectedEntry != null ? _duplicate : null,
+                                        icon: const Icon(Icons.copy),
+                                        label: const Text('Duplicate'),
+                                      ),
                                 ],
                               ),
                             ],

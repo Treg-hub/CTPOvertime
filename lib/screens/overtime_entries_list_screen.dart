@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
+import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
 import 'package:intl/intl.dart';
 
 class OvertimeEntriesListScreen extends StatefulWidget {
@@ -11,9 +12,7 @@ class OvertimeEntriesListScreen extends StatefulWidget {
 }
 
 class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
-  late Future<List<OvertimeEntry>> _entriesFuture;
-  final Set<String> _editingIds = {};
-  final Map<String, OvertimeEntry> _edits = {};
+  late Stream<List<OvertimeEntry>> _entriesStream;
   String _selectedDept = 'All';
   final List<String> _departments = ['All', 'Pressroom', 'PostPress', 'PrePress', 'Electrical', 'Mechanical'];
 
@@ -25,38 +24,8 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
 
   void _loadEntries() {
     setState(() {
-      _entriesFuture = DataService.overtimeEntries;
+      _entriesStream = DataService.getRecentOvertimeStream(limit: 25);
     });
-  }
-
-  void _startEdit(OvertimeEntry entry) {
-    setState(() {
-      _editingIds.add(entry.id);
-      _edits[entry.id] = entry.copyWith();
-    });
-  }
-
-  void _cancelEdit(String id) {
-    setState(() {
-      _editingIds.remove(id);
-      _edits.remove(id);
-    });
-  }
-
-  void _saveEdit(String id) async {
-    final updatedEntry = _edits[id];
-    if (updatedEntry == null) return;
-
-    await DataService.updateOvertime(updatedEntry);
-    setState(() {
-      _editingIds.remove(id);
-      _edits.remove(id);
-      _loadEntries();
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Entry updated')),
-    );
   }
 
   void _deleteEntry(String id) async {
@@ -79,14 +48,59 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
     );
     if (confirm == true) {
       await DataService.deleteOvertime(id);
-      setState(() {
-        _loadEntries();
-      });
+      // No need to reload - StreamBuilder auto-updates
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Entry deleted')),
       );
     }
+  }
+
+  void _showEditDialog(OvertimeEntry entry) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          height: MediaQuery.of(context).size.height * 0.8,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Edit Overtime Entry',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: OvertimeForm(
+                  initialEntry: entry,
+                  onSave: (updatedEntry) async {
+                    await DataService.updateOvertime(updatedEntry);
+                    Navigator.pop(context);
+                    setState(() {
+                      _loadEntries();
+                    });
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Entry updated')),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -95,8 +109,8 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
       appBar: AppBar(
         title: const Text('Overtime Entries'),
       ),
-      body: FutureBuilder<List<OvertimeEntry>>(
-        future: _entriesFuture,
+      body: StreamBuilder<List<OvertimeEntry>>(
+        stream: _entriesStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -116,7 +130,7 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedDept,
+                        initialValue: _selectedDept,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
                         ),
@@ -131,68 +145,60 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
+                    columnSpacing: 16,
                     columns: const [
-                      DataColumn(label: Text('Clock Num')),
-                      DataColumn(label: Text('Employee Name')),
+                      DataColumn(label: Text('Clock')),
+                      DataColumn(label: Text('Name')),
                       DataColumn(label: Text('Date')),
-                      DataColumn(label: Text('Shift Type')),
-                      DataColumn(label: Text('OT Type')),
-                      DataColumn(label: Text('Start Time')),
-                      DataColumn(label: Text('End Time')),
-                      DataColumn(label: Text('Hours')),
-                      DataColumn(label: Text('Department')),
+                      DataColumn(label: Text('Shift')),
+                      DataColumn(label: Text('OT')),
+                      DataColumn(label: Text('Start')),
+                      DataColumn(label: Text('End')),
+                      DataColumn(label: Text('Hrs')),
+                      DataColumn(label: Text('Dept')),
                       DataColumn(label: Text('Reason')),
                       DataColumn(label: Text('Status')),
-                      DataColumn(label: Text('Actions')),
+                      DataColumn(label: Text('Entered')),
+                      DataColumn(label: Text('By')),
+                      DataColumn(label: SizedBox(width: 120, child: Text('Actions', textAlign: TextAlign.center))),
                     ],
                     rows: filteredEntries.map((entry) {
-                      final isEditing = _editingIds.contains(entry.id);
-                      final editEntry = _edits[entry.id] ?? entry;
-                      return DataRow(cells: [
-                        DataCell(isEditing 
-                          ? SizedBox(width: 80, child: TextFormField(initialValue: editEntry.clockNum, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(clockNum: v)))) 
-                          : Text(entry.clockNum)),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 120, child: TextFormField(initialValue: editEntry.employeeName, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(employeeName: v)))) 
-                          : Text(entry.employeeName)),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 100, child: TextFormField(initialValue: DateFormat('yyyy-MM-dd').format(editEntry.date), onChanged: (v) { try { setState(() => _edits[entry.id] = editEntry.copyWith(date: DateTime.parse(v))); } catch (_) {} })) 
-                          : Text(DateFormat('yyyy-MM-dd').format(entry.date))),
-                        DataCell(isEditing 
-                          ? DropdownButtonFormField<String>(value: editEntry.shiftType, items: const ['Day', 'Night', 'Custom'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(shiftType: v!))) 
-                          : Text(entry.shiftType)),
-                        DataCell(isEditing 
-                          ? DropdownButtonFormField<String>(value: editEntry.overtimeType, items: const ['Normal Time', '1.5 X 10 + 2 X 2', '2 X 12', 'Standby'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(overtimeType: v!))) 
-                          : Text(entry.overtimeType)),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 70, child: TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.startTime), onChanged: (v) { try { final p = v.split(':'); setState(() => _edits[entry.id] = editEntry.copyWith(startTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(p[0]), int.parse(p[1])))); } catch (_) {} })) 
-                          : Text(DateFormat('HH:mm').format(entry.startTime))),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 70, child: TextFormField(initialValue: DateFormat('HH:mm').format(editEntry.endTime), onChanged: (v) { try { final p = v.split(':'); setState(() => _edits[entry.id] = editEntry.copyWith(endTime: DateTime(editEntry.date.year, editEntry.date.month, editEntry.date.day, int.parse(p[0]), int.parse(p[1])))); } catch (_) {} })) 
-                          : Text(DateFormat('HH:mm').format(entry.endTime))),
-                        DataCell(Text(entry.hours.toStringAsFixed(1))),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 80, child: TextFormField(initialValue: editEntry.department, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(department: v)))) 
-                          : Text(entry.department)),
-                        DataCell(isEditing 
-                          ? SizedBox(width: 150, child: TextFormField(initialValue: editEntry.reason, onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(reason: v)))) 
-                          : Text(entry.reason, overflow: TextOverflow.ellipsis)),
-                        DataCell(isEditing 
-                          ? DropdownButtonFormField<String>(value: editEntry.status, items: const ['Pending', 'Approved', 'Cancelled'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => _edits[entry.id] = editEntry.copyWith(status: v!))) 
-                          : Text(entry.status)),
-                        DataCell(Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isEditing) ...[
-                              IconButton(icon: const Icon(Icons.save, size: 18), onPressed: () => _saveEdit(entry.id)),
-                              IconButton(icon: const Icon(Icons.cancel, size: 18), onPressed: () => _cancelEdit(entry.id)),
-                            ] else ...[
-                              IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _startEdit(entry)),
-                              IconButton(icon: const Icon(Icons.delete, size: 18), onPressed: () => _deleteEntry(entry.id)),
-                            ],
-                          ],
-                        )),
-                      ]);
+                      return DataRow(
+                        onSelectChanged: (_) => _showEditDialog(entry),
+                        cells: [
+                          DataCell(SizedBox(width: 60, child: Text(entry.clockNum))),
+                          DataCell(SizedBox(width: 100, child: Text(entry.employeeName, overflow: TextOverflow.ellipsis))),
+                          DataCell(SizedBox(width: 80, child: Text(DateFormat('MM/dd').format(entry.date)))),
+                          DataCell(SizedBox(width: 50, child: Text(entry.shiftType.substring(0, 1)))),
+                          DataCell(SizedBox(width: 60, child: Text(entry.overtimeType.split(' ')[0]))),
+                          DataCell(SizedBox(width: 50, child: Text(DateFormat('HH:mm').format(entry.startTime)))),
+                          DataCell(SizedBox(width: 50, child: Text(DateFormat('HH:mm').format(entry.endTime)))),
+                          DataCell(SizedBox(width: 40, child: Text(entry.hours.toStringAsFixed(1)))),
+                          DataCell(SizedBox(width: 60, child: Text(entry.department.substring(0, 3)))),
+                          DataCell(SizedBox(width: 120, child: Text(entry.reason, overflow: TextOverflow.ellipsis))),
+                          DataCell(SizedBox(width: 60, child: Text(entry.status.substring(0, 3)))),
+                          DataCell(SizedBox(width: 80, child: Text(entry.dateEntered != null ? DateFormat('MM/dd').format(entry.dateEntered!) : 'N/A'))),
+                          DataCell(SizedBox(width: 80, child: Text(entry.enteredBy ?? 'N/A', overflow: TextOverflow.ellipsis))),
+                          DataCell(SizedBox(
+                            width: 120,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 18),
+                                  onPressed: () => _showEditDialog(entry),
+                                  tooltip: 'Edit',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, size: 18),
+                                  onPressed: () => _deleteEntry(entry.id),
+                                  tooltip: 'Delete',
+                                ),
+                              ],
+                            ),
+                          )),
+                        ],
+                      );
                     }).toList(),
                   ),
                 ),

@@ -15,6 +15,32 @@ class DataService {
     return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
   }
 
+  static Future<List<OvertimeEntry>> getPendingOvertime() async {
+    final snapshot = await _firestore
+        .collection('overtime_entries')
+        .where('status', isEqualTo: 'Pending')
+        .get();
+    return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
+  }
+
+  static Future<List<OvertimeEntry>> getRecentOvertime({int limit = 25}) async {
+    final snapshot = await _firestore
+        .collection('overtime_entries')
+        .orderBy('startTime', descending: true)
+        .limit(limit)
+        .get();
+    return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
+  }
+
+  static Stream<List<OvertimeEntry>> getRecentOvertimeStream({int limit = 25}) {
+    return _firestore
+        .collection('overtime_entries')
+        .orderBy('startTime', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList());
+  }
+
   static Future<void> addJob(Job job) async {
     await _firestore.collection('jobs').add(job.toMap());
   }
