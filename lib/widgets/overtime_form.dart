@@ -10,12 +10,18 @@ import 'package:collection/collection.dart';
 class OvertimeForm extends StatefulWidget {
   final OvertimeEntry? initialEntry;
   final Function(OvertimeEntry) onSave;
+  final List<String> reasonSuggestions;
+  final Function(List<String>) onSuggestionsChanged;
 
   const OvertimeForm({
     super.key,
     this.initialEntry,
     required this.onSave,
+    this.reasonSuggestions = const [],
+    this.onSuggestionsChanged = _defaultOnChanged,
   });
+
+  static void _defaultOnChanged(List<String> s) {}
 
   @override
   State<OvertimeForm> createState() => _OvertimeFormState();
@@ -65,7 +71,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     'Standby'
   ];
 
-  List<String> _reasonSuggestions = [];
+
 
   // Employees loaded from Firebase
   List<Map<String, String>> _employees = []; // [{name: "...", clock: "...", department: "..."}]
@@ -76,7 +82,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     super.initState();
     _initializeControllers();
     _loadEmployeesFromFirebase();
-    _loadUsedReasons();
+
   }
 
   @override
@@ -134,7 +140,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
             _department = _normalizeDepartment(emp['department']!);
           }
         }
-        print('Loaded ${_employees.length} employees (filtered): $_employees');
+        print('Loaded ${_employees.length} employees');
       });
     } catch (e) {
       // If Firebase not set up yet, use mock data
@@ -153,20 +159,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     }
   }
 
-  Future<void> _loadUsedReasons() async {
-    try {
-      final entries = await DataService.overtimeEntries;
-      setState(() {
-        _reasonSuggestions = entries.map((e) => e.reason).where((r) => r.trim().isNotEmpty).toSet().toList()..sort();
-      });
-    } catch (e) {
-      // If error, keep empty or use defaults
-      setState(() {
-        _reasonSuggestions = ['Sick Leave', 'Annual Leave', 'Run 3rd Machine'];
-      });
-      print('Error loading used reasons: $e');
-    }
-  }
+
 
   void _setDefaultTimesForShift(String shift) {
     setState(() {
@@ -238,7 +231,22 @@ class _OvertimeFormState extends State<OvertimeForm> {
       );
 
       widget.onSave(entry);
+      _clearForm();
     }
+  }
+
+  void _clearForm() {
+    setState(() {
+      _duController.clear();
+      _clockController.clear();
+      _employeeName = '';
+      _reasonController.clear();
+      _shiftType = 'Day';
+      _overtimeType = 'Normal Time';
+      _press = '';
+      _department = 'Post Press';
+      _setDefaultTimesForShift('Day');
+    });
   }
 
   @override
@@ -308,7 +316,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
             ),
             const SizedBox(height: 16),
 
-            // Department
+            // Department & Press
             Row(
               children: [
                 Expanded(
@@ -322,13 +330,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                     onChanged: (v) => setState(() => _department = v!),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Press
-            Row(
-              children: [
+                const SizedBox(width: 16),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _press,
@@ -507,16 +509,20 @@ class _OvertimeFormState extends State<OvertimeForm> {
 
             Wrap(
               spacing: 8,
-              children: _reasonSuggestions.map((reason) => FilterChip(
-                label: Text(reason),
-                selected: _reasonController.text == reason,
-                onSelected: (selected) {
-                  if (selected) {
-                    setState(() {
-                      _reasonController.text = reason;
-                    });
-                  }
-                },
+              children: widget.reasonSuggestions.map((reason) => InkWell(
+                onTap: () => setState(() => _reasonController.text = reason),
+                child: Chip(
+                  label: Text(reason),
+                  onDeleted: () async {
+                    final user = Provider.of<UserProvider>(context, listen: false).currentUser;
+                    if (user != null) {
+                      await FirebaseFirestore.instance.collection('employees').doc(user.id).update({
+                        'hiddenReasons': FieldValue.arrayUnion([reason]),
+                      });
+                    }
+                    widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..remove(reason));
+                  },
+                ),
               )).toList(),
             ),
             const SizedBox(height: 8),
@@ -535,11 +541,9 @@ class _OvertimeFormState extends State<OvertimeForm> {
                   icon: const Icon(Icons.add),
                   onPressed: () {
                     final newReason = _newReasonController.text.trim();
-                    if (newReason.isNotEmpty && !_reasonSuggestions.contains(newReason)) {
-                      setState(() {
-                        _reasonSuggestions.add(newReason);
-                        _newReasonController.clear();
-                      });
+                    if (newReason.isNotEmpty && !widget.reasonSuggestions.contains(newReason)) {
+                      widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..add(newReason));
+                      _newReasonController.clear();
                     }
                   },
                 ),

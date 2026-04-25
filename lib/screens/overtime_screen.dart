@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
+import 'package:ctp_overtime_tracker/main.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_list.dart';
 
@@ -15,11 +17,33 @@ class OvertimeScreen extends StatefulWidget {
 class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
   bool _isDuplicating = false;
+  String _selectedDept = 'All';
+  List<String> _reasonSuggestions = [];
 
   @override
   void initState() {
     super.initState();
     _selectedEntry = widget.initialEntry;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsedReasons());
+  }
+
+  Future<void> _loadUsedReasons() async {
+    try {
+      final entries = await DataService.overtimeEntries;
+      final user = Provider.of<UserProvider>(context, listen: false).currentUser;
+      final userName = user?.name ?? '';
+      final hidden = user?.hiddenReasons?.cast<String>() ?? <String>[];
+      final filteredEntries = entries.where((e) => e.enteredBy == userName);
+      setState(() {
+        _reasonSuggestions = filteredEntries.map((e) => e.reason).where((r) => r != null && r.trim().isNotEmpty && !hidden.contains(r)).toSet().toList()..sort();
+      });
+    } catch (e) {
+      // If error, keep empty or use defaults
+      setState(() {
+        _reasonSuggestions = ['Sick Leave', 'Annual Leave', 'Run 3rd Machine'];
+      });
+      print('Error loading used reasons: $e');
+    }
   }
 
   void _selectEntry(OvertimeEntry entry) {
@@ -70,7 +94,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
       await DataService.updateOvertime(entry);
     }
     setState(() {
-      _selectedEntry = entry;
+      _selectedEntry = null; // Clear form after save
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -80,8 +104,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<OvertimeEntry>>(
-      future: DataService.getRecentOvertime(limit: 100), // Show more in main screen, sorted newest first
+    return StreamBuilder<List<OvertimeEntry>>(
+      stream: DataService.getRecentOvertimeStream(limit: 50), // Live recent overtime (50 newest by startTime desc)
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -90,6 +114,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
           return Center(child: Text('Error loading overtime entries: ${snapshot.error}'));
         }
         final entries = snapshot.data ?? [];
+        final filteredEntries = _selectedDept == 'All' ? entries : entries.where((e) => e.department == _selectedDept).toList();
+        final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
         return LayoutBuilder(
           builder: (context, constraints) {
             final isSmall = constraints.maxWidth < 800;
@@ -150,6 +176,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                             child: OvertimeForm(
                               initialEntry: _selectedEntry,
                               onSave: _saveEntry,
+                              reasonSuggestions: _reasonSuggestions,
+                              onSuggestionsChanged: (List<String> s) => setState(() => _reasonSuggestions = s),
                             ),
                           ),
                         ],
@@ -170,24 +198,15 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                           child: Row(
                             children: [
                               Text(
-                                'Overtime List (${entries.length})',
+                                'Overtime List (${filteredEntries.length})',
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
                               const Spacer(),
                               // Department filter (for logged-in user's department)
                               DropdownButton<String>(
-                                value: 'All',
-                                items: const [
-                                  DropdownMenuItem(value: 'All', child: Text('All Depts')),
-                                  DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
-                                  DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
-                                ],
-                                onChanged: (value) {
-                                  // TODO: Filter the list based on logged-in user's department
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Filtered to $value (demo)')),
-                                  );
-                                },
+                                value: _selectedDept,
+                                items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
+                                onChanged: (value) => setState(() => _selectedDept = value!),
                               ),
                               const SizedBox(width: 8),
                               IconButton(
@@ -205,7 +224,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                         ),
                         Expanded(
                           child: OvertimeList(
-                            entries: entries,
+                            entries: filteredEntries,
                             onSelect: _selectEntry,
                             selectedId: _selectedEntry?.id,
                           ),
@@ -272,6 +291,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                             child: OvertimeForm(
                               initialEntry: _selectedEntry,
                               onSave: _saveEntry,
+                              reasonSuggestions: _reasonSuggestions,
+                              onSuggestionsChanged: (List<String> s) => setState(() => _reasonSuggestions = s),
                             ),
                           ),
                         ],
@@ -292,24 +313,15 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                           child: Row(
                             children: [
                               Text(
-                                'Overtime List (${entries.length})',
+                                'Overtime List (${filteredEntries.length})',
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
                               const Spacer(),
                               // Department filter (for logged-in user's department)
                               DropdownButton<String>(
-                                value: 'All',
-                                items: const [
-                                  DropdownMenuItem(value: 'All', child: Text('All Depts')),
-                                  DropdownMenuItem(value: 'PostPress', child: Text('PostPress')),
-                                  DropdownMenuItem(value: 'Electrical', child: Text('Electrical')),
-                                ],
-                                onChanged: (value) {
-                                  // TODO: Filter the list based on logged-in user's department
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Filtered to $value (demo)')),
-                                  );
-                                },
+                                value: _selectedDept,
+                                items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
+                                onChanged: (value) => setState(() => _selectedDept = value!),
                               ),
                               const SizedBox(width: 8),
                               IconButton(
@@ -327,7 +339,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                         ),
                         Expanded(
                           child: OvertimeList(
-                            entries: entries,
+                            entries: filteredEntries,
                             onSelect: _selectEntry,
                             selectedId: _selectedEntry?.id,
                           ),

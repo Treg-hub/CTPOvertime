@@ -1,17 +1,18 @@
 # Progress
 
 ## What Works
-- All core screens, Firebase sync, seeded data (97 entries), theme toggle, overlap analysis.
+- All core screens, Firebase sync, theme toggle, overlap analysis.
 - Approval queue as dedicated bottom nav tab (7 tabs total) with manager features (split-screen, bulk approve, email to wages).
 - Calendar: Improved tooltips (employee details, max 20), enhanced markers (larger pills, hours bar).
 - New settings menu on bottom nav with approval queue section, dedicated list screens with inline edit/delete (overtime, jobs).
 - Dashboard date range filter, per-person breakdown.
-- Overtime form improvements: clock dropdown autofill, field reorder, reason chips, fixed selection issues, audit fields (dateEntered, enteredBy).
-- Responsive layouts, status darker bg.
+- Overtime form improvements: clock dropdown autofill, field reorder, reason chips, fixed selection issues, audit fields (dateEntered, enteredBy), clear after save, side-by-side department/press, persist hidden reasons.
+- Responsive layouts, status darker bg, department filter, fixed sorting (StreamBuilder limit 50 desc).
 - Jobs duplicate button.
 - Visual timeline in analysis, grouped by dept in ExpansionTiles (with totals), right column jobs list with total overlap hours (sorted descending).
 - Custom authentication: LoginScreen using employees collection, UserProvider, logout in app bar.
 - Audit trail: Date Entered and Entered By fields in all lists.
+- Load 135 employees for autocomplete, no console errors.
 
 ## What's Left to Build
 - Approve & Email to Wages (Cloud Functions + email).

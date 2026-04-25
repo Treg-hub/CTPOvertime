@@ -5,6 +5,7 @@ class User {
   final String department;
   final String email;
   final bool isManager;
+  final List<String> hiddenReasons;
 
   User({
     required this.id,
@@ -13,6 +14,7 @@ class User {
     required this.department,
     required this.email,
     required this.isManager,
+    this.hiddenReasons = const [],
   });
 
   factory User.fromMap(Map<String, dynamic> map, String id) => User(
@@ -22,5 +24,15 @@ class User {
         department: map['department'] ?? '',
         email: map['email'] ?? '',
         isManager: map['position'] == 'Manager',
+        hiddenReasons: List<String>.from(map['hiddenReasons'] ?? []),
       );
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'clockNo': clockNum,
+        'department': department,
+        'email': email,
+        'position': isManager ? 'Manager' : 'Employee',
+        'hiddenReasons': hiddenReasons,
+      };
 }

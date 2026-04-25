@@ -9,7 +9,7 @@
 
 ## Technical Constraints
 - Web-first; Firebase rules for security.
-- No auth yet; seeded data via JS script.
+- Auth system implemented; no seeded data.
 
 ## Dependencies
 - provider: State management.

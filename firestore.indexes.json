@@ -5,10 +5,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "date",
-          "order": "DESCENDING"
-        },
-        {
           "fieldPath": "startTime",
           "order": "DESCENDING"
         }

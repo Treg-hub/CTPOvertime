@@ -1,8 +1,8 @@
 # System Patterns
 
 ## System Architecture
-- Provider state management (ThemeProvider).
-- Models: Job, OvertimeEntry.
+- Provider state management (ThemeProvider, UserProvider).
+- Models: Job, OvertimeEntry, User (with hiddenReasons).
 - Services: data_service.dart (Firebase CRUD).
 - Screens: Self-contained with widgets (e.g., overtime_form, job_list).
 - BottomNavigationBar routing.

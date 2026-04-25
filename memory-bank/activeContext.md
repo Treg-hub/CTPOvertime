@@ -22,6 +22,16 @@
 - Added authentication system: LoginScreen, UserProvider, User model, logout in app bar.
 - Added audit fields to OvertimeEntry: dateEntered (serverTimestamp), enteredBy (current user).
 - Added delete methods to DataService, getEmployees, copyWith to models.
+- Fixed overtime sorting by changing FutureBuilder to StreamBuilder with limit 50, ordered by startTime desc.
+- Removed console freeze by removing print in OvertimeList.
+- Fixed reason chips duplicates by adding unique and sort.
+- Added department filter with dynamic depts from entries.
+- Removed seed data reference from package.json.
+- Added hiddenReasons to User model, persist remove via Firestore arrayUnion.
+- Clear form after save.
+- Fixed null reason error in _loadUsedReasons.
+- Put department and press side by side.
+- Load 135 employees for autocomplete.
 
 ## Active Decisions and Considerations
 - Provider for theme; async data loading everywhere.
