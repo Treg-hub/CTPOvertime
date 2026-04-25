@@ -225,7 +225,7 @@ class OvertimeListPanel extends StatelessWidget {
                 ),
                 const Spacer(),
                 DropdownButton<String>(
-                  value: selectedDept,
+                  value: depts.contains(selectedDept) ? selectedDept : 'All',
                   items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
                   onChanged: (value) => onDeptChanged(value!),
                 ),
@@ -303,6 +303,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   Widget build(BuildContext context) {
     return StreamBuilder<List<OvertimeEntry>>(
       stream: _stream, // Live recent overtime (50 newest by startTime desc)
+      initialData: [], // Prevent initial flash with empty list
       builder: (context, snapshot) {
         print('Overtime StreamBuilder connectionState: ${snapshot.connectionState}');
         if (snapshot.connectionState == ConnectionState.waiting) {
