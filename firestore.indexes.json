@@ -1,15 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "overtime_entries",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "startTime",
-          "order": "DESCENDING"
-        }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }

@@ -267,6 +267,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
   String _selectedDept = 'All';
   List<String> _reasonSuggestions = [];
+  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50).timeout(const Duration(seconds: 10));
 
   @override
   void initState() {
@@ -301,15 +302,74 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<OvertimeEntry>>(
-      stream: DataService.getRecentOvertimeStream(limit: 50), // Live recent overtime (50 newest by startTime desc)
+      stream: _stream, // Live recent overtime (50 newest by startTime desc)
       builder: (context, snapshot) {
+        print('Overtime StreamBuilder connectionState: ${snapshot.connectionState}');
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
+          print('Overtime StreamBuilder error: ${snapshot.error}');
+          // If timeout, show empty list instead of error
+          if (snapshot.error.toString().contains('TimeoutException')) {
+            print('Timeout loading overtime entries, showing empty list');
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = constraints.maxWidth < 800;
+                return isSmall ? Column(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: OvertimeFormPanel(
+                        initialEntry: _selectedEntry,
+                        onSave: (entry) {},
+                        onEntryChanged: _onFormEntryChanged,
+                        reasonSuggestions: _reasonSuggestions,
+                        onSuggestionsChanged: _onSuggestionsChanged,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 6,
+                      child: OvertimeListPanel(
+                        entries: [],
+                        onSelect: _selectEntry,
+                        selectedId: _selectedEntry?.id,
+                        selectedDept: _selectedDept,
+                        onDeptChanged: _onDeptChanged,
+                      ),
+                    ),
+                  ],
+                ) : Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: OvertimeFormPanel(
+                        initialEntry: _selectedEntry,
+                        onSave: (entry) {},
+                        onEntryChanged: _onFormEntryChanged,
+                        reasonSuggestions: _reasonSuggestions,
+                        onSuggestionsChanged: _onSuggestionsChanged,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 6,
+                      child: OvertimeListPanel(
+                        entries: [],
+                        onSelect: _selectEntry,
+                        selectedId: _selectedEntry?.id,
+                        selectedDept: _selectedDept,
+                        onDeptChanged: _onDeptChanged,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          }
           return Center(child: Text('Error loading overtime entries: ${snapshot.error}'));
         }
         final entries = snapshot.data ?? [];
+        print('Overtime StreamBuilder data length: ${entries.length}');
         return LayoutBuilder(
           builder: (context, constraints) {
             final isSmall = constraints.maxWidth < 800;

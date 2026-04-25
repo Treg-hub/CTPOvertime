@@ -6,12 +6,12 @@ class DataService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static Future<List<Job>> get jobs async {
-    final snapshot = await _firestore.collection('jobs').get();
+    final snapshot = await _firestore.collection('jobs').limit(100).get();
     return snapshot.docs.map((doc) => Job.fromMap(doc.data(), doc.id)).toList();
   }
 
   static Future<List<OvertimeEntry>> get overtimeEntries async {
-    final snapshot = await _firestore.collection('overtime_entries').get();
+    final snapshot = await _firestore.collection('overtime_entries').limit(1000).get();
     return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
   }
 
@@ -19,6 +19,7 @@ class DataService {
     final snapshot = await _firestore
         .collection('overtime_entries')
         .where('status', isEqualTo: 'Pending')
+        .limit(500)
         .get();
     return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
   }
@@ -85,14 +86,7 @@ class DataService {
     await _firestore.collection('reasons').doc(id).delete();
   }
 
-  static Future<List<Map<String, String>>> getEmployees() async {
-    final entries = await overtimeEntries;
-    final unique = <String, String>{};
-    for (var e in entries) {
-      unique[e.clockNum] = e.employeeName;
-    }
-    return unique.entries.map((e) => {'clockNum': e.key, 'name': e.value}).toList();
-  }
+
 
   // Smart overlap calculation
   static Future<List<Map<String, dynamic>>> getOverlappingOvertime(Job job) async {
