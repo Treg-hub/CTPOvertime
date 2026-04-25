@@ -5,13 +5,14 @@ import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:ctp_overtime_tracker/main.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:collection/collection.dart';
+
 
 class OvertimeForm extends StatefulWidget {
   final OvertimeEntry? initialEntry;
   final Function(OvertimeEntry) onSave;
   final List<String> reasonSuggestions;
   final Function(List<String>) onSuggestionsChanged;
+  final String selectedDept;
 
   const OvertimeForm({
     super.key,
@@ -19,31 +20,28 @@ class OvertimeForm extends StatefulWidget {
     required this.onSave,
     this.reasonSuggestions = const [],
     this.onSuggestionsChanged = _defaultOnChanged,
+    this.selectedDept = 'All',
   });
 
   static void _defaultOnChanged(List<String> s) {}
 
   @override
-  State<OvertimeForm> createState() => _OvertimeFormState();
+  State<OvertimeForm> createState() => OvertimeFormState();
 }
 
-class _OvertimeFormState extends State<OvertimeForm> {
+class OvertimeFormState extends State<OvertimeForm> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _duController;
-  late TextEditingController _clockController;
   late TextEditingController _reasonController;
   late TextEditingController _descriptionController;
   late TextEditingController _newReasonController;
-  late TextEditingController _clockFieldController;
-  String _employeeName = '';
+  List<Map<String, String>> selectedEmployees = [];
 
   String _press = '';
   String _shiftType = 'Day';
   String _overtimeType = 'Normal Time';
-  DateTime _startDate = DateTime.now();
-  TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
-  DateTime _endDate = DateTime.now();
-  TimeOfDay _endTime = const TimeOfDay(hour: 18, minute: 0);
+  DateTime _startDateTime = DateTime.now();
+  DateTime _endDateTime = DateTime.now().add(const Duration(hours: 12));
   String _department = 'Post Press';
 
   final List<String> _presses = ['Badenia', 'Wifag', 'Aurora', ''];
@@ -97,24 +95,21 @@ class _OvertimeFormState extends State<OvertimeForm> {
   void _initializeControllers() {
     final entry = widget.initialEntry;
     _duController = TextEditingController(text: entry?.duNumber ?? '');
-    _clockController = TextEditingController(text: entry?.clockNum ?? '');
     _reasonController = TextEditingController(text: entry?.reason ?? '');
     _descriptionController = TextEditingController(text: entry?.description ?? '');
     _newReasonController = TextEditingController();
-    _clockFieldController = TextEditingController(text: entry?.clockNum ?? '');
-    _employeeName = entry?.employeeName ?? '';
 
     if (entry != null) {
+      selectedEmployees = [{'clock': entry.clockNum, 'name': entry.employeeName, 'department': entry.department}];
       _press = entry.press;
       _shiftType = entry.shiftType;
       _overtimeType = entry.overtimeType;
       _department = _normalizeDepartment(entry.department);
-      _startDate = entry.startTime;
-      _startTime = TimeOfDay.fromDateTime(entry.startTime);
-      _endDate = entry.endTime;
-      _endTime = TimeOfDay.fromDateTime(entry.endTime);
+      _startDateTime = entry.startTime;
+      _endDateTime = entry.endTime;
       _detectShiftType();
     } else {
+      selectedEmployees = [];
       _setDefaultTimesForShift('Day');
     }
   }
@@ -131,16 +126,6 @@ class _OvertimeFormState extends State<OvertimeForm> {
             'department': data['department']?.toString() ?? '',
           };
         }).where((emp) => (emp['clock'] ?? '').isNotEmpty).toList();
-        if (widget.initialEntry != null && _clockController.text.isNotEmpty) {
-          final emp = _employees.firstWhereOrNull((e) => e['clock'] == _clockController.text);
-          if (emp == null) {
-            _employeeName = '';
-            _department = 'Post Press'; // Reset to default if not found
-          } else {
-            _employeeName = emp['name']!;
-            _department = _normalizeDepartment(emp['department']!);
-          }
-        }
       });
     } catch (e) {
       setState(() {
@@ -154,31 +139,52 @@ class _OvertimeFormState extends State<OvertimeForm> {
   void _setDefaultTimesForShift(String shift) {
     setState(() {
       _shiftType = shift;
+      final now = DateTime.now();
       if (shift == 'Day') {
-        _startTime = const TimeOfDay(hour: 6, minute: 0);
-        _endTime = const TimeOfDay(hour: 18, minute: 0);
-        _endDate = _startDate;
+        _startDateTime = DateTime(now.year, now.month, now.day, 6, 0);
+        _endDateTime = DateTime(now.year, now.month, now.day, 18, 0);
       } else if (shift == 'Night') {
-        _startTime = const TimeOfDay(hour: 18, minute: 0);
-        _endTime = const TimeOfDay(hour: 6, minute: 0);
-        _endDate = _startDate.add(const Duration(days: 1));
+        _startDateTime = DateTime(now.year, now.month, now.day, 18, 0);
+        _endDateTime = DateTime(now.year, now.month, now.day + 1, 6, 0);
       } else {
         // Custom - keep current or default to 8 hours
-        _startTime = const TimeOfDay(hour: 8, minute: 0);
-        _endTime = const TimeOfDay(hour: 16, minute: 0);
-        _endDate = _startDate;
+        _startDateTime = DateTime(now.year, now.month, now.day, 8, 0);
+        _endDateTime = DateTime(now.year, now.month, now.day, 16, 0);
       }
     });
   }
 
   void _detectShiftType() {
     // Simple detection based on start time
-    if (_startTime.hour >= 5 && _startTime.hour < 12) {
+    if (_startDateTime.hour >= 5 && _startDateTime.hour < 12) {
       _shiftType = 'Day';
-    } else if (_startTime.hour >= 17 || _startTime.hour < 5) {
+    } else if (_startDateTime.hour >= 17 || _startDateTime.hour < 5) {
       _shiftType = 'Night';
     } else {
       _shiftType = 'Custom';
+    }
+  }
+
+  Future<void> _pickDateTime(bool isStart) async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: isStart ? _startDateTime : _endDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (date != null) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(isStart ? _startDateTime : _endDateTime),
+      );
+      if (time != null) {
+        final dateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+        setState(() {
+          if (isStart) _startDateTime = dateTime;
+          else _endDateTime = dateTime;
+          if (isStart) _detectShiftType();
+        });
+      }
     }
   }
 
@@ -187,42 +193,38 @@ class _OvertimeFormState extends State<OvertimeForm> {
   @override
   void dispose() {
     _duController.dispose();
-    _clockController.dispose();
     _reasonController.dispose();
     _descriptionController.dispose();
     _newReasonController.dispose();
-    _clockFieldController.dispose();
     super.dispose();
   }
 
   void _save() {
     if (_formKey.currentState!.validate()) {
-      final entry = OvertimeEntry(
-        id: widget.initialEntry?.id,
-        duNumber: _duController.text.trim(),
-        clockNum: _clockController.text.trim(),
-        employeeName: _employeeName,
-        press: _press,
-        date: _startDate,
-        shiftType: _shiftType,
-        overtimeType: _overtimeType,
-        startTime: DateTime(
-          _startDate.year, _startDate.month, _startDate.day,
-          _startTime.hour, _startTime.minute,
-        ),
-        endTime: DateTime(
-          _endDate.year, _endDate.month, _endDate.day,
-          _endTime.hour, _endTime.minute,
-        ),
-        department: _department,
-        reason: _reasonController.text.trim(),
-        description: _descriptionController.text.trim(),
-        status: widget.initialEntry?.status ?? 'Pending',
-        dateEntered: widget.initialEntry?.dateEntered ?? DateTime.now(),
-        enteredBy: widget.initialEntry?.enteredBy ?? context.read<UserProvider>().currentUser?.name,
-      );
-
-      widget.onSave(entry);
+      if (selectedEmployees.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one employee')));
+        return;
+      }
+      for (var emp in selectedEmployees) {
+        final entry = OvertimeEntry(
+          duNumber: _duController.text.trim(),
+          clockNum: emp['clock']!,
+          employeeName: emp['name']!,
+          press: _press,
+          date: _startDateTime,
+          shiftType: _shiftType,
+          overtimeType: _overtimeType,
+          startTime: _startDateTime,
+          endTime: _endDateTime,
+          department: _department,
+          reason: _reasonController.text.trim(),
+          description: _descriptionController.text.trim(),
+          status: 'Pending',
+          dateEntered: DateTime.now(),
+          enteredBy: context.read<UserProvider>().currentUser?.name,
+        );
+        widget.onSave(entry);
+      }
       _clearForm();
     }
   }
@@ -230,8 +232,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
   void _clearForm() {
     setState(() {
       _duController.clear();
-      _clockController.clear();
-      _employeeName = '';
+      selectedEmployees.clear();
       _reasonController.clear();
       _descriptionController.clear();
       _shiftType = 'Day';
@@ -242,6 +243,30 @@ class _OvertimeFormState extends State<OvertimeForm> {
     });
   }
 
+  bool validateForm() => _formKey.currentState!.validate();
+
+  OvertimeEntry getCurrentEntry() {
+    final emp = selectedEmployees.isNotEmpty ? selectedEmployees.first : {'clock': '', 'name': ''};
+    return OvertimeEntry(
+      id: widget.initialEntry?.id,
+      duNumber: _duController.text.trim(),
+      clockNum: emp['clock']!,
+      employeeName: emp['name']!,
+      press: _press,
+      date: _startDateTime,
+      shiftType: _shiftType,
+      overtimeType: _overtimeType,
+      startTime: _startDateTime,
+      endTime: _endDateTime,
+      department: _department,
+      reason: _reasonController.text.trim(),
+      description: _descriptionController.text.trim(),
+      status: widget.initialEntry?.status ?? 'Pending',
+      dateEntered: widget.initialEntry?.dateEntered ?? DateTime.now(),
+      enteredBy: widget.initialEntry?.enteredBy ?? context.read<UserProvider>().currentUser?.name,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Form(
@@ -249,65 +274,59 @@ class _OvertimeFormState extends State<OvertimeForm> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            // DU Number & Clock
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _duController,
-                    decoration: const InputDecoration(
-                      labelText: 'DU Number',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Autocomplete<String>(
-                    optionsMaxHeight: 200,
-                    fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                      // Sync the Autocomplete's controller with our _clockController
-                      textEditingController.addListener(() {
-                        _clockController.text = textEditingController.text;
-                      });
-                      // Set initial value if editing
-                      if (_clockController.text.isNotEmpty && textEditingController.text.isEmpty) {
-                        textEditingController.text = _clockController.text;
-                      }
-                      return TextFormField(
-                        controller: textEditingController,
-                        focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Clock Number',
-                          border: OutlineInputBorder(),
-                        ),
-                        onFieldSubmitted: (value) => onFieldSubmitted(),
-                        validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                      );
-                    },
-                    optionsBuilder: (TextEditingValue textEditingValue) {
-                      if (textEditingValue.text.isEmpty) return [];
-                      return _employees.where((emp) =>
-                        emp['clock']!.contains(textEditingValue.text) ||
-                        emp['name']!.toLowerCase().contains(textEditingValue.text.toLowerCase())
-                      ).map((emp) => '${emp['clock']} - ${emp['name']} - ${emp['department']}');
-                    },
-                    onSelected: (String selection) {
-                      final parts = selection.split(' - ');
-                      final clock = parts[0];
-                      final name = parts[1];
-                      final dept = parts[2];
-                      setState(() {
-                        _clockController.text = clock;
-                        _employeeName = name;
-                        _department = _normalizeDepartment(dept);
-                      });
-                    },
-                  ),
-                ),
-              ],
+            // DU Number
+            TextFormField(
+              controller: _duController,
+              decoration: const InputDecoration(
+                labelText: 'DU Number',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 16),
+
+            // Selected Employees
+            const Text('Selected Employees:'),
+            Wrap(
+              spacing: 8,
+              children: selectedEmployees.map((emp) => Chip(
+                label: Text('${emp['clock']} - ${emp['name']}'),
+                onDeleted: () => setState(() => selectedEmployees.remove(emp)),
+              )).toList(),
+            ),
+            const SizedBox(height: 16),
+
+            // Add Employee
+            Autocomplete<String>(
+              optionsMaxHeight: 200,
+              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                return TextFormField(
+                  controller: textEditingController,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Add Employee (Clock or Name)',
+                    border: OutlineInputBorder(),
+                  ),
+                  onFieldSubmitted: (value) => onFieldSubmitted(),
+                );
+              },
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text.isEmpty) return [];
+                return _employees.where((emp) =>
+                  (emp['department'] == widget.selectedDept || widget.selectedDept == 'All') &&
+                  !selectedEmployees.any((s) => s['clock'] == emp['clock']) &&
+                  (emp['clock']!.contains(textEditingValue.text) ||
+                   emp['name']!.toLowerCase().contains(textEditingValue.text.toLowerCase()))
+                ).map((emp) => '${emp['clock']} - ${emp['name']} - ${emp['department']}');
+              },
+              onSelected: (String selection) {
+                final parts = selection.split(' - ');
+                final clock = parts[0];
+                final name = parts[1];
+                final dept = parts[2];
+                setState(() => selectedEmployees.add({'clock': clock, 'name': name, 'department': dept}));
+              },
+            ),
+            const SizedBox(height: 12),
 
             // Department & Press
             Row(
@@ -340,7 +359,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             // Shift Type + Overtime Type
             Row(
@@ -376,118 +395,33 @@ class _OvertimeFormState extends State<OvertimeForm> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Start Date/Time & End Date/Time (supports overnight shifts)
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _startDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _startDate = picked;
-                          // Auto-update end date based on shift type
-                          if (_shiftType == 'Day') {
-                            _endDate = picked;
-                          } else if (_shiftType == 'Night') {
-                            _endDate = picked.add(const Duration(days: 1));
-                          }
-                          // Custom shift keeps current end date
-                        });
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Start Date',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(DateFormat('yyyy-MM-dd').format(_startDate)),
-                    ),
-                  ),
+            // Start Date & Time
+            InkWell(
+              onTap: () => _pickDateTime(true),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Start Date & Time',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _startTime,
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _startTime = picked;
-                          _shiftType = 'Custom';
-                        });
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Start Time',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(_startTime.format(context)),
-                    ),
-                  ),
-                ),
-              ],
+                child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_startDateTime)),
+              ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _endDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                      );
-                      if (picked != null) setState(() => _endDate = picked);
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'End Date',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(DateFormat('yyyy-MM-dd').format(_endDate)),
-                    ),
-                  ),
+
+            // End Date & Time
+            InkWell(
+              onTap: () => _pickDateTime(false),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'End Date & Time',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _endTime,
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _endTime = picked;
-                          _shiftType = 'Custom';
-                        });
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'End Time',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(_endTime.format(context)),
-                    ),
-                  ),
-                ),
-              ],
+                child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_endDateTime)),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             TextFormField(
               controller: _reasonController,
@@ -498,17 +432,17 @@ class _OvertimeFormState extends State<OvertimeForm> {
               ),
               validator: (v) => v!.isEmpty ? 'Please enter a reason category' : null,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             TextFormField(
               controller: _descriptionController,
-              maxLines: 4,
+              maxLines: 3,
               decoration: const InputDecoration(
                 labelText: 'Description',
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             Wrap(
               spacing: 8,
@@ -563,20 +497,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
                 ),
                 const SizedBox(width: 16),
                 OutlinedButton(
-                  onPressed: () {
-                    // Cancel - clear form
-                    setState(() {
-                      _duController.clear();
-                      _clockController.clear();
-                      _employeeName = '';
-                      _reasonController.clear();
-                      _shiftType = 'Day';
-                      _overtimeType = 'Normal Time';
-                      _press = '';
-                      _department = 'Post Press';
-                      _setDefaultTimesForShift('Day');
-                    });
-                  },
+                  onPressed: _clearForm,
                   child: const Text('Cancel'),
                 ),
               ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
@@ -10,6 +11,7 @@ class OvertimeFormPanel extends StatefulWidget {
   final Function(OvertimeEntry?) onEntryChanged;
   final List<String> reasonSuggestions;
   final Function(List<String>) onSuggestionsChanged;
+  final String selectedDept;
 
   const OvertimeFormPanel({
     super.key,
@@ -18,6 +20,7 @@ class OvertimeFormPanel extends StatefulWidget {
     required this.onEntryChanged,
     required this.reasonSuggestions,
     required this.onSuggestionsChanged,
+    required this.selectedDept,
   });
 
   @override
@@ -25,8 +28,10 @@ class OvertimeFormPanel extends StatefulWidget {
 }
 
 class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
+  final GlobalKey<OvertimeFormState> _formKey = GlobalKey();
   OvertimeEntry? _selectedEntry;
   bool _isDuplicating = false;
+  bool _isSavingDuplicating = false;
   List<String> _reasonSuggestions = [];
 
   @override
@@ -118,12 +123,44 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
     widget.onSave(entry);
   }
 
+  void _saveAndDuplicate() async {
+    setState(() => _isSavingDuplicating = true);
+    final formState = _formKey.currentState;
+    if (formState!.validateForm()) {
+      final entry = formState.getCurrentEntry();
+      // save
+      if (_selectedEntry == null) {
+        await DataService.addOvertime(entry);
+      } else {
+        await DataService.updateOvertime(entry);
+      }
+      // dup
+      final dupEntry = entry.copyWith(
+        id: const Uuid().v4(),
+        dateEntered: null,
+        enteredBy: null,
+      );
+      setState(() {
+        _selectedEntry = dupEntry;
+        _isSavingDuplicating = false;
+      });
+      widget.onEntryChanged(dupEntry);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Entry saved and duplicated. Update employee details.')),
+      );
+      widget.onSave(entry);
+    } else {
+      setState(() => _isSavingDuplicating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -168,6 +205,28 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                             icon: const Icon(Icons.copy),
                             label: const Text('Duplicate'),
                           ),
+                      const SizedBox(width: 8),
+                      _isSavingDuplicating
+                        ? ElevatedButton.icon(
+                            onPressed: null,
+                            icon: const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            label: const Text('Saving & Duplicating'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                            ),
+                          )
+                        : ElevatedButton.icon(
+                            onPressed: _saveAndDuplicate,
+                            icon: const Icon(Icons.save_as),
+                            label: const Text('Save & Duplicate'),
+                          ),
                     ],
                   ),
                 ),
@@ -181,6 +240,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                 onSave: _saveEntry,
                 reasonSuggestions: _reasonSuggestions,
                 onSuggestionsChanged: (List<String> suggestions) => setState(() => _reasonSuggestions = suggestions),
+                selectedDept: widget.selectedDept,
               ),
             ),
           ],
@@ -193,11 +253,15 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
 class OvertimeListPanel extends StatefulWidget {
   final Function(OvertimeEntry) onSelect;
   final String? selectedId;
+  final String selectedDept;
+  final Function(String) onDeptChanged;
 
   const OvertimeListPanel({
     super.key,
     required this.onSelect,
     this.selectedId,
+    required this.selectedDept,
+    required this.onDeptChanged,
   });
 
   @override
@@ -205,8 +269,8 @@ class OvertimeListPanel extends StatefulWidget {
 }
 
 class _OvertimeListPanelState extends State<OvertimeListPanel> {
-  String _selectedDept = 'All';
-  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50).timeout(const Duration(seconds: 10));
+  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50);
+  bool _hasLoadedInitially = false;
 
   @override
   Widget build(BuildContext context) {
@@ -214,68 +278,82 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
       stream: _stream,
       initialData: [],
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data!.isEmpty) {
+        final entries = snapshot.data ?? [];
+        final hasData = entries.isNotEmpty;
+
+        // Mark as loaded once we have data
+        if (hasData && !_hasLoadedInitially) {
+          _hasLoadedInitially = true;
+        }
+
+        // Show loading only on very first load
+        if (snapshot.connectionState == ConnectionState.waiting && !_hasLoadedInitially) {
           return const Card(
             margin: EdgeInsets.all(16),
             child: Center(child: CircularProgressIndicator()),
           );
         }
-        if (snapshot.hasError) {
-          if (snapshot.error.toString().contains('TimeoutException')) {
-            return const Card(
-              margin: EdgeInsets.all(16),
-              child: Center(child: Text('Loading overtime entries...')),
-            );
-          }
+
+        // If we have data, show it even if connection state changes
+        if (_hasLoadedInitially && hasData) {
+          final filteredEntries = widget.selectedDept == 'All' ? entries : entries.where((e) => e.department == widget.selectedDept).toList();
+          final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
+
           return Card(
             margin: const EdgeInsets.all(16),
-            child: Center(child: Text('Error: ${snapshot.error}')),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Overtime List (${filteredEntries.length})',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const Spacer(),
+                      DropdownButton<String>(
+                        value: depts.contains(widget.selectedDept) ? widget.selectedDept : 'All',
+                        items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
+                        onChanged: (value) => widget.onDeptChanged(value!),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.download),
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Export feature coming soon')),
+                          );
+                        },
+                        tooltip: 'Export CSV',
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: OvertimeList(
+                    entries: filteredEntries,
+                    onSelect: widget.onSelect,
+                    selectedId: widget.selectedId,
+                  ),
+                ),
+              ],
+            ),
           );
         }
-        final entries = snapshot.data ?? [];
-        final filteredEntries = _selectedDept == 'All' ? entries : entries.where((e) => e.department == _selectedDept).toList();
-        final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
 
-        return Card(
-          margin: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Text(
-                      'Overtime List (${filteredEntries.length})',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const Spacer(),
-                    DropdownButton<String>(
-                      value: depts.contains(_selectedDept) ? _selectedDept : 'All',
-                      items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
-                      onChanged: (value) => setState(() => _selectedDept = value!),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.download),
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Export feature coming soon')),
-                        );
-                      },
-                      tooltip: 'Export CSV',
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: OvertimeList(
-                  entries: filteredEntries,
-                  onSelect: widget.onSelect,
-                  selectedId: widget.selectedId,
-                ),
-              ),
-            ],
-          ),
+        // Handle errors
+        if (snapshot.hasError) {
+          return Card(
+            margin: const EdgeInsets.all(16),
+            child: Center(child: Text('Error loading overtime entries: ${snapshot.error}')),
+          );
+        }
+
+        // Fallback for empty state
+        return const Card(
+          margin: EdgeInsets.all(16),
+          child: Center(child: Text('No overtime entries found')),
         );
       },
     );
@@ -293,6 +371,7 @@ class OvertimeScreen extends StatefulWidget {
 class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
   List<String> _reasonSuggestions = [];
+  String _selectedDept = 'All';
 
   @override
   void initState() {
@@ -318,6 +397,12 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
     });
   }
 
+  void _onDeptChanged(String dept) {
+    setState(() {
+      _selectedDept = dept;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -333,6 +418,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 onEntryChanged: _onFormEntryChanged,
                 reasonSuggestions: _reasonSuggestions,
                 onSuggestionsChanged: _onSuggestionsChanged,
+                selectedDept: _selectedDept,
               ),
             ),
             Expanded(
@@ -340,6 +426,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
               child: OvertimeListPanel(
                 onSelect: _selectEntry,
                 selectedId: _selectedEntry?.id,
+                selectedDept: _selectedDept,
+                onDeptChanged: _onDeptChanged,
               ),
             ),
           ],
@@ -353,6 +441,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 onEntryChanged: _onFormEntryChanged,
                 reasonSuggestions: _reasonSuggestions,
                 onSuggestionsChanged: _onSuggestionsChanged,
+                selectedDept: _selectedDept,
               ),
             ),
             Expanded(
@@ -360,6 +449,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
               child: OvertimeListPanel(
                 onSelect: _selectEntry,
                 selectedId: _selectedEntry?.id,
+                selectedDept: _selectedDept,
+                onDeptChanged: _onDeptChanged,
               ),
             ),
           ],
