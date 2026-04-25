@@ -11,6 +11,7 @@
 - Jobs duplicate button.
 - Visual timeline in analysis, grouped by dept in ExpansionTiles (with totals), right column jobs list with total overlap hours (sorted descending).
 - Custom authentication: LoginScreen using employees collection, UserProvider, logout in app bar.
+- Fixed Firebase Auth integration: resolved User name conflicts with alias, implemented persistent login with auto-profile fetch from employees collection, manager-only access with error handling.
 - Audit trail: Date Entered and Entered By fields in all lists.
 - Load 135 employees for autocomplete, no console errors.
 

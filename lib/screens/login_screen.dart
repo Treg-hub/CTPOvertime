@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ctp_overtime_tracker/models/user.dart';
 import 'package:ctp_overtime_tracker/main.dart';
@@ -28,6 +29,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    userProvider.setLoading(true);
+    userProvider.setAuthError(null); // Clear any previous auth errors
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -37,35 +41,69 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
-      // Query employees collection for matching email and password
+      // Sign in with Firebase Auth
+      await firebase_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Use the authenticated user's UID for profile lookup (more secure)
+      final uid = firebase_auth.FirebaseAuth.instance.currentUser!.uid;
+      print('Login: Authenticated UID: $uid'); // Debug
+
+      // Fetch additional profile from employees collection (by UID)
       final snapshot = await FirebaseFirestore.instance
           .collection('employees')
-          .where('email', isEqualTo: email)
-          .where('password', isEqualTo: password)
+          .where('uid', isEqualTo: uid)
           .where('position', isEqualTo: 'Manager')
+          .limit(1)
           .get();
 
       if (snapshot.docs.isNotEmpty) {
         final doc = snapshot.docs.first;
-        final user = User.fromMap(doc.data(), doc.id);
+        final appUser = User.fromMap(doc.data(), doc.id);
 
         if (mounted) {
-          context.read<UserProvider>().login(user);
+          userProvider.login(appUser);
         }
       } else {
+        // Sign out if no matching manager profile found
+        await firebase_auth.FirebaseAuth.instance.signOut();
         setState(() {
-          _errorMessage = 'Invalid email or password, or not a manager account';
+          _errorMessage = 'No manager profile found for this account. Contact admin.';
         });
       }
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No user found for that email.';
+          break;
+        case 'wrong-password':
+          message = 'Wrong password provided.';
+          break;
+        case 'invalid-email':
+          message = 'The email address is badly formatted.';
+          break;
+        case 'user-disabled':
+          message = 'This user account has been disabled.';
+          break;
+        default:
+          message = 'Login failed: ${e.message}';
+      }
+      setState(() {
+        _errorMessage = message;
+      });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Login failed: ${e.toString()}';
+        _errorMessage = 'An unexpected error occurred: ${e.toString()}';
       });
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
+        userProvider.setLoading(false);
       }
     }
   }
@@ -159,6 +197,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   if (_errorMessage != null) const SizedBox(height: 16),
+                  Consumer<UserProvider>(
+                    builder: (context, userProvider, child) {
+                      if (userProvider.authError != null) {
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Text(
+                            userProvider.authError!,
+                            style: TextStyle(color: Colors.red.shade800),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                  Consumer<UserProvider>(
+                    builder: (context, userProvider, child) {
+                      return userProvider.authError != null ? const SizedBox(height: 16) : const SizedBox.shrink();
+                    },
+                  ),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _login,
                     style: ElevatedButton.styleFrom(
@@ -176,6 +239,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           )
                         : const Text('Login'),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Secure login powered by Firebase Authentication',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'firebase_options.dart';
 import 'package:ctp_overtime_tracker/theme/app_theme.dart';
 import 'package:ctp_overtime_tracker/models/user.dart';
@@ -12,6 +13,7 @@ import 'package:ctp_overtime_tracker/screens/dashboard_screen.dart';
 import 'package:ctp_overtime_tracker/screens/approval_screen.dart';
 import 'package:ctp_overtime_tracker/screens/settings_screen.dart';
 import 'package:ctp_overtime_tracker/screens/login_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,19 +50,72 @@ class ThemeProvider extends ChangeNotifier {
 
 class UserProvider extends ChangeNotifier {
   User? _currentUser;
+  bool _isLoading = false;
+  String? _authError;
 
   User? get currentUser => _currentUser;
-
   bool get isLoggedIn => _currentUser != null;
+  bool get isLoading => _isLoading;
+  String? get authError => _authError;
+
+  void setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+
+  void setAuthError(String? error) {
+    _authError = error;
+    notifyListeners();
+  }
 
   void login(User user) {
     _currentUser = user;
+    _authError = null; // Clear any previous error
     notifyListeners();
   }
 
   void logout() {
     _currentUser = null;
+    _authError = null;
     notifyListeners();
+  }
+
+  /// Fetches manager profile from Firestore for the given Firebase user.
+  /// If found, logs in the user. If not, sets error and signs out.
+  Future<void> loadFromFirebase(firebase_auth.User firebaseUser) async {
+    setLoading(true);
+    setAuthError(null); // Clear previous errors
+
+    try {
+      final uid = firebaseUser.uid;
+      print('AuthWrapper: Loading profile for UID: $uid'); // Debug
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('employees')
+          .where('uid', isEqualTo: uid)
+          .where('position', isEqualTo: 'Manager')
+          .limit(1)
+          .get();
+
+      print('AuthWrapper: Query returned ${snapshot.docs.length} docs'); // Debug
+
+      if (snapshot.docs.isNotEmpty) {
+        final appUser = User.fromMap(snapshot.docs.first.data(), snapshot.docs.first.id);
+        login(appUser);
+        print('AuthWrapper: Logged in user: ${appUser.name}'); // Debug
+      } else {
+        setAuthError('No manager profile found for this account. Contact admin.');
+        await firebase_auth.FirebaseAuth.instance.signOut();
+        print('AuthWrapper: No manager profile found, signed out'); // Debug
+      }
+    } catch (e) {
+      setAuthError('Error loading profile: ${e.toString()}');
+      await firebase_auth.FirebaseAuth.instance.signOut();
+      print('AuthWrapper: Error loading profile: $e'); // Debug
+    } finally {
+      setLoading(false);
+      print('AuthWrapper: Loading complete'); // Debug
+    }
   }
 }
 
@@ -70,15 +125,60 @@ class CTPOverTimeTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final userProvider = Provider.of<UserProvider>(context);
 
     return MaterialApp(
       title: 'CTP Gravure Overtime',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.isDark ? ThemeMode.dark : ThemeMode.light,
-      home: userProvider.isLoggedIn ? const MainNavigation() : const LoginScreen(),
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+
+    return StreamBuilder<firebase_auth.User?>(
+      stream: firebase_auth.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting || userProvider.isLoading) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFFF6B35),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasData) {
+          // Firebase user exists
+          if (userProvider.currentUser != null) {
+            return const MainNavigation();
+          } else {
+            // Auto-fetch manager profile
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Provider.of<UserProvider>(context, listen: false).loadFromFirebase(snapshot.data!);
+            });
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFFFF6B35),
+                ),
+              ),
+            );
+          }
+        }
+
+        // No Firebase user
+        return const LoginScreen();
+      },
     );
   }
 }
@@ -120,9 +220,14 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
           const SizedBox(width: 16),
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'logout') {
-                userProvider.logout();
+                try {
+                  await firebase_auth.FirebaseAuth.instance.signOut();
+                  userProvider.logout();
+                } catch (e) {
+                  print('Logout error: $e');
+                }
               }
             },
             itemBuilder: (context) => [

@@ -20,6 +20,7 @@
 - Updated job_analysis_screen.dart: visual timeline for overlaps, grouped by dept in ExpansionTiles (with totals), right column jobs list with total overlap hours (sorted descending).
 - Updated settings_screen.dart: added approval queue section with approve/reject functionality.
 - Added authentication system: LoginScreen, UserProvider, User model, logout in app bar.
+- Fixed Firebase Auth integration: resolved User name conflicts with alias, improved AuthWrapper for persistent login with auto-profile fetch from employees collection, updated login flow to use firebase email, added error handling for invalid managers.
 - Added audit fields to OvertimeEntry: dateEntered (serverTimestamp), enteredBy (current user).
 - Added delete methods to DataService, getEmployees, copyWith to models.
 - Fixed overtime sorting by changing FutureBuilder to StreamBuilder with limit 50, ordered by startTime desc.
