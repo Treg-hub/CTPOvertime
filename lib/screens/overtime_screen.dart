@@ -190,67 +190,94 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   }
 }
 
-class OvertimeListPanel extends StatelessWidget {
-  final List<OvertimeEntry> entries;
+class OvertimeListPanel extends StatefulWidget {
   final Function(OvertimeEntry) onSelect;
   final String? selectedId;
-  final String selectedDept;
-  final Function(String) onDeptChanged;
 
   const OvertimeListPanel({
     super.key,
-    required this.entries,
     required this.onSelect,
     this.selectedId,
-    required this.selectedDept,
-    required this.onDeptChanged,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final filteredEntries = selectedDept == 'All' ? entries : entries.where((e) => e.department == selectedDept).toList();
-    final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
+  State<OvertimeListPanel> createState() => _OvertimeListPanelState();
+}
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Text(
-                  'Overtime List (${filteredEntries.length})',
-                  style: Theme.of(context).textTheme.titleLarge,
+class _OvertimeListPanelState extends State<OvertimeListPanel> {
+  String _selectedDept = 'All';
+  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50).timeout(const Duration(seconds: 10));
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<OvertimeEntry>>(
+      stream: _stream,
+      initialData: [],
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data!.isEmpty) {
+          return const Card(
+            margin: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          if (snapshot.error.toString().contains('TimeoutException')) {
+            return const Card(
+              margin: EdgeInsets.all(16),
+              child: Center(child: Text('Loading overtime entries...')),
+            );
+          }
+          return Card(
+            margin: const EdgeInsets.all(16),
+            child: Center(child: Text('Error: ${snapshot.error}')),
+          );
+        }
+        final entries = snapshot.data ?? [];
+        final filteredEntries = _selectedDept == 'All' ? entries : entries.where((e) => e.department == _selectedDept).toList();
+        final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
+
+        return Card(
+          margin: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Text(
+                      'Overtime List (${filteredEntries.length})',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Spacer(),
+                    DropdownButton<String>(
+                      value: depts.contains(_selectedDept) ? _selectedDept : 'All',
+                      items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
+                      onChanged: (value) => setState(() => _selectedDept = value!),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.download),
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Export feature coming soon')),
+                        );
+                      },
+                      tooltip: 'Export CSV',
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                DropdownButton<String>(
-                  value: depts.contains(selectedDept) ? selectedDept : 'All',
-                  items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
-                  onChanged: (value) => onDeptChanged(value!),
+              ),
+              Expanded(
+                child: OvertimeList(
+                  entries: filteredEntries,
+                  onSelect: widget.onSelect,
+                  selectedId: widget.selectedId,
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Export feature coming soon')),
-                    );
-                  },
-                  tooltip: 'Export CSV',
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Expanded(
-            child: OvertimeList(
-              entries: filteredEntries,
-              onSelect: onSelect,
-              selectedId: selectedId,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -265,9 +292,7 @@ class OvertimeScreen extends StatefulWidget {
 
 class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
-  String _selectedDept = 'All';
   List<String> _reasonSuggestions = [];
-  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50).timeout(const Duration(seconds: 10));
 
   @override
   void initState() {
@@ -287,12 +312,6 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
     });
   }
 
-  void _onDeptChanged(String dept) {
-    setState(() {
-      _selectedDept = dept;
-    });
-  }
-
   void _onSuggestionsChanged(List<String> suggestions) {
     setState(() {
       _reasonSuggestions = suggestions;
@@ -301,127 +320,49 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<OvertimeEntry>>(
-      stream: _stream, // Live recent overtime (50 newest by startTime desc)
-      initialData: [], // Prevent initial flash with empty list
-      builder: (context, snapshot) {
-        print('Overtime StreamBuilder connectionState: ${snapshot.connectionState}');
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          print('Overtime StreamBuilder error: ${snapshot.error}');
-          // If timeout, show empty list instead of error
-          if (snapshot.error.toString().contains('TimeoutException')) {
-            print('Timeout loading overtime entries, showing empty list');
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final isSmall = constraints.maxWidth < 800;
-                return isSmall ? Column(
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: OvertimeFormPanel(
-                        initialEntry: _selectedEntry,
-                        onSave: (entry) {},
-                        onEntryChanged: _onFormEntryChanged,
-                        reasonSuggestions: _reasonSuggestions,
-                        onSuggestionsChanged: _onSuggestionsChanged,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 6,
-                      child: OvertimeListPanel(
-                        entries: [],
-                        onSelect: _selectEntry,
-                        selectedId: _selectedEntry?.id,
-                        selectedDept: _selectedDept,
-                        onDeptChanged: _onDeptChanged,
-                      ),
-                    ),
-                  ],
-                ) : Row(
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: OvertimeFormPanel(
-                        initialEntry: _selectedEntry,
-                        onSave: (entry) {},
-                        onEntryChanged: _onFormEntryChanged,
-                        reasonSuggestions: _reasonSuggestions,
-                        onSuggestionsChanged: _onSuggestionsChanged,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 6,
-                      child: OvertimeListPanel(
-                        entries: [],
-                        onSelect: _selectEntry,
-                        selectedId: _selectedEntry?.id,
-                        selectedDept: _selectedDept,
-                        onDeptChanged: _onDeptChanged,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          }
-          return Center(child: Text('Error loading overtime entries: ${snapshot.error}'));
-        }
-        final entries = snapshot.data ?? [];
-        print('Overtime StreamBuilder data length: ${entries.length}');
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final isSmall = constraints.maxWidth < 800;
-            return isSmall ? Column(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: OvertimeFormPanel(
-                    initialEntry: _selectedEntry,
-                    onSave: (entry) {},
-                    onEntryChanged: _onFormEntryChanged,
-                    reasonSuggestions: _reasonSuggestions,
-                    onSuggestionsChanged: _onSuggestionsChanged,
-                  ),
-                ),
-                Expanded(
-                  flex: 6,
-                  child: OvertimeListPanel(
-                    entries: entries,
-                    onSelect: _selectEntry,
-                    selectedId: _selectedEntry?.id,
-                    selectedDept: _selectedDept,
-                    onDeptChanged: _onDeptChanged,
-                  ),
-                ),
-              ],
-            ) : Row(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: OvertimeFormPanel(
-                    initialEntry: _selectedEntry,
-                    onSave: (entry) {},
-                    onEntryChanged: _onFormEntryChanged,
-                    reasonSuggestions: _reasonSuggestions,
-                    onSuggestionsChanged: _onSuggestionsChanged,
-                  ),
-                ),
-                Expanded(
-                  flex: 6,
-                  child: OvertimeListPanel(
-                    entries: entries,
-                    onSelect: _selectEntry,
-                    selectedId: _selectedEntry?.id,
-                    selectedDept: _selectedDept,
-                    onDeptChanged: _onDeptChanged,
-                  ),
-                ),
-              ],
-            );
-          },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmall = constraints.maxWidth < 800;
+        return isSmall ? Column(
+          children: [
+            Expanded(
+              flex: 5,
+              child: OvertimeFormPanel(
+                initialEntry: _selectedEntry,
+                onSave: (entry) {},
+                onEntryChanged: _onFormEntryChanged,
+                reasonSuggestions: _reasonSuggestions,
+                onSuggestionsChanged: _onSuggestionsChanged,
+              ),
+            ),
+            Expanded(
+              flex: 6,
+              child: OvertimeListPanel(
+                onSelect: _selectEntry,
+                selectedId: _selectedEntry?.id,
+              ),
+            ),
+          ],
+        ) : Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: OvertimeFormPanel(
+                initialEntry: _selectedEntry,
+                onSave: (entry) {},
+                onEntryChanged: _onFormEntryChanged,
+                reasonSuggestions: _reasonSuggestions,
+                onSuggestionsChanged: _onSuggestionsChanged,
+              ),
+            ),
+            Expanded(
+              flex: 6,
+              child: OvertimeListPanel(
+                onSelect: _selectEntry,
+                selectedId: _selectedEntry?.id,
+              ),
+            ),
+          ],
         );
       },
     );
