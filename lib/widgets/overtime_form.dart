@@ -36,6 +36,7 @@ class OvertimeFormState extends State<OvertimeForm> {
   late TextEditingController _descriptionController;
   late TextEditingController _newReasonController;
   List<Map<String, String>> selectedEmployees = [];
+  String? _selectedReasonCategory;
 
   String _press = '';
   String _shiftType = 'Day';
@@ -79,6 +80,7 @@ class OvertimeFormState extends State<OvertimeForm> {
   void initState() {
     super.initState();
     _initializeControllers();
+    _selectedReasonCategory = widget.reasonSuggestions.contains(_reasonController.text) ? _reasonController.text : null;
     _loadEmployeesFromFirebase();
 
   }
@@ -89,6 +91,9 @@ class OvertimeFormState extends State<OvertimeForm> {
     if (oldWidget.initialEntry != widget.initialEntry) {
       _initializeControllers();
       _descriptionController.text = widget.initialEntry?.description ?? '';
+    }
+    if (oldWidget.reasonSuggestions != widget.reasonSuggestions) {
+      _selectedReasonCategory = widget.reasonSuggestions.contains(_reasonController.text) ? _reasonController.text : null;
     }
   }
 
@@ -166,29 +171,224 @@ class OvertimeFormState extends State<OvertimeForm> {
   }
 
   Future<void> _pickDateTime(bool isStart) async {
-    final date = await showDatePicker(
+    final initialDT = isStart ? _startDateTime : _endDateTime;
+    showDialog(
       context: context,
-      initialDate: isStart ? _startDateTime : _endDateTime,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          DateTime selectedDate = initialDT;
+          TimeOfDay selectedTime = TimeOfDay.fromDateTime(initialDT);
+          return AlertDialog(
+            title: Text(isStart ? 'Select Start Date & Time' : 'Select End Date & Time'),
+            content: SizedBox(
+              height: 400,
+              width: 400,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: CalendarDatePicker(
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                      onDateChanged: (date) => setDialogState(() => selectedDate = date),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Hour'),
+                        DropdownButton<int>(
+                          value: selectedTime.hour,
+                          items: List.generate(24, (i) => DropdownMenuItem(value: i, child: Text(i.toString().padLeft(2, '0')))),
+                          onChanged: (v) => setDialogState(() => selectedTime = TimeOfDay(hour: v!, minute: selectedTime.minute)),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text('Minute'),
+                        DropdownButton<int>(
+                          value: selectedTime.minute,
+                          items: List.generate(60, (i) => DropdownMenuItem(value: i, child: Text(i.toString().padLeft(2, '0')))),
+                          onChanged: (v) => setDialogState(() => selectedTime = TimeOfDay(hour: selectedTime.hour, minute: v!)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final newDT = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute);
+                  Navigator.of(context).pop();
+                  setState(() {
+                    if (isStart) _startDateTime = newDT;
+                    else _endDateTime = newDT;
+                    if (isStart) _detectShiftType();
+                  });
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      ),
     );
-    if (date != null) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(isStart ? _startDateTime : _endDateTime),
-      );
-      if (time != null) {
-        final dateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-        setState(() {
-          if (isStart) _startDateTime = dateTime;
-          else _endDateTime = dateTime;
-          if (isStart) _detectShiftType();
-        });
-      }
-    }
   }
 
+  void _showReasonDialog() {
+    String tempCategory = _selectedReasonCategory ?? '';
+    String tempDescription = _descriptionController.text;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Reason Details'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: tempCategory.isNotEmpty && widget.reasonSuggestions.contains(tempCategory) ? tempCategory : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason Category',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.reasonSuggestions.map((reason) => DropdownMenuItem(value: reason, child: Text(reason))).toList(),
+                  onChanged: (value) => setDialogState(() => tempCategory = value ?? ''),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: tempDescription,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) => tempDescription = value,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (tempCategory.isNotEmpty) {
+                  setState(() {
+                    _selectedReasonCategory = tempCategory;
+                    _reasonController.text = tempCategory;
+                    _descriptionController.text = tempDescription;
+                  });
+                  // Add new category if not exists
+                  if (!widget.reasonSuggestions.contains(tempCategory)) {
+                    final user = context.read<UserProvider>().currentUser;
+                    if (user != null) {
+                      await DataService.addReason(tempCategory, user.name);
+                      widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..add(tempCategory));
+                    }
+                  }
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  void _showEmployeeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          String searchQuery = '';
+          Set<String> selectedClocks = Set.from(selectedEmployees.map((e) => e['clock']!));
+          List<Map<String, String>> filteredEmployees = _employees.where((emp) {
+            final deptMatch = widget.selectedDept == 'All' || emp['department'] == widget.selectedDept;
+            final searchMatch = searchQuery.isEmpty ||
+              emp['clock']!.contains(searchQuery) ||
+              emp['name']!.toLowerCase().contains(searchQuery.toLowerCase());
+            final notSelected = !selectedEmployees.any((s) => s['clock'] == emp['clock']);
+            return deptMatch && searchMatch && notSelected;
+          }).toList();
+          return AlertDialog(
+            title: const Text('Select Employees'),
+            content: SizedBox(
+              width: 400,
+              height: 400,
+              child: Column(
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Search by Clock or Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => setDialogState(() => searchQuery = value),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filteredEmployees.length,
+                      itemBuilder: (context, index) {
+                        final emp = filteredEmployees[index];
+                        return CheckboxListTile(
+                          title: Text('${emp['clock']} - ${emp['name']}'),
+                          subtitle: Text(emp['department']!),
+                          value: selectedClocks.contains(emp['clock']),
+                          onChanged: (bool? value) {
+                            setDialogState(() {
+                              if (value == true) {
+                                selectedClocks.add(emp['clock']!);
+                              } else {
+                                selectedClocks.remove(emp['clock']);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    for (final clock in selectedClocks) {
+                      final emp = _employees.firstWhere((e) => e['clock'] == clock);
+                      selectedEmployees.add({
+                        'clock': emp['clock']!,
+                        'name': emp['name']!,
+                        'department': emp['department']!,
+                      });
+                    }
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Add Selected'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -295,36 +495,15 @@ class OvertimeFormState extends State<OvertimeForm> {
             ),
             const SizedBox(height: 16),
 
-            // Add Employee
-            Autocomplete<String>(
-              optionsMaxHeight: 200,
-              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                return TextFormField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Add Employee (Clock or Name)',
-                    border: OutlineInputBorder(),
-                  ),
-                  onFieldSubmitted: (value) => onFieldSubmitted(),
-                );
-              },
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                if (textEditingValue.text.isEmpty) return [];
-                return _employees.where((emp) =>
-                  (emp['department'] == widget.selectedDept || widget.selectedDept == 'All') &&
-                  !selectedEmployees.any((s) => s['clock'] == emp['clock']) &&
-                  (emp['clock']!.contains(textEditingValue.text) ||
-                   emp['name']!.toLowerCase().contains(textEditingValue.text.toLowerCase()))
-                ).map((emp) => '${emp['clock']} - ${emp['name']} - ${emp['department']}');
-              },
-              onSelected: (String selection) {
-                final parts = selection.split(' - ');
-                final clock = parts[0];
-                final name = parts[1];
-                final dept = parts[2];
-                setState(() => selectedEmployees.add({'clock': clock, 'name': name, 'department': dept}));
-              },
+            // Add Employees
+            TextFormField(
+              readOnly: true,
+              decoration: const InputDecoration(
+                labelText: 'Add Employees',
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.arrow_drop_down),
+              ),
+              onTap: _showEmployeeDialog,
             ),
             const SizedBox(height: 12),
 
@@ -397,40 +576,64 @@ class OvertimeFormState extends State<OvertimeForm> {
             ),
             const SizedBox(height: 12),
 
-            // Start Date & Time
-            InkWell(
-              onTap: () => _pickDateTime(true),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Start Date & Time',
-                  border: OutlineInputBorder(),
+            // Start & End Date & Time
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _pickDateTime(true),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Start Date & Time',
+                        border: OutlineInputBorder(),
+                      ),
+                      child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_startDateTime)),
+                    ),
+                  ),
                 ),
-                child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_startDateTime)),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _pickDateTime(false),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'End Date & Time',
+                        border: OutlineInputBorder(),
+                      ),
+                      child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_endDateTime)),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
 
-            // End Date & Time
-            InkWell(
-              onTap: () => _pickDateTime(false),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'End Date & Time',
-                  border: OutlineInputBorder(),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedReasonCategory,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason Category',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: widget.reasonSuggestions.map((reason) => DropdownMenuItem(value: reason, child: Text(reason))).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedReasonCategory = value;
+                        _reasonController.text = value ?? '';
+                      });
+                    },
+                    validator: (value) => (value == null || value.isEmpty) ? 'Please select a reason category' : null,
+                  ),
                 ),
-                child: Text(DateFormat('dd MMM yyyy  hh:mm a').format(_endDateTime)),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            TextFormField(
-              controller: _reasonController,
-              maxLines: 1,
-              decoration: const InputDecoration(
-                labelText: 'Reason Category',
-                border: OutlineInputBorder(),
-              ),
-              validator: (v) => v!.isEmpty ? 'Please enter a reason category' : null,
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showReasonDialog,
+                  tooltip: 'Add/Edit Reason Details',
+                ),
+              ],
             ),
             const SizedBox(height: 12),
 
@@ -441,45 +644,6 @@ class OvertimeFormState extends State<OvertimeForm> {
                 labelText: 'Description',
                 border: OutlineInputBorder(),
               ),
-            ),
-            const SizedBox(height: 12),
-
-            Wrap(
-              spacing: 8,
-              children: widget.reasonSuggestions.map((reason) => InkWell(
-                onTap: () => setState(() => _reasonController.text = reason),
-                child: Chip(
-                  label: Text(reason),
-                ),
-              )).toList(),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _newReasonController,
-                    decoration: const InputDecoration(
-                      labelText: 'Add new reason category',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () async {
-                    final newReason = _newReasonController.text.trim();
-                    if (newReason.isNotEmpty && !widget.reasonSuggestions.contains(newReason)) {
-                      final user = context.read<UserProvider>().currentUser;
-                      if (user != null) {
-                        await DataService.addReason(newReason, user.name);
-                        widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..add(newReason));
-                        _newReasonController.clear();
-                      }
-                    }
-                  },
-                ),
-              ],
             ),
             const SizedBox(height: 24),
 
