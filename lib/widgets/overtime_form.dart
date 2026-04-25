@@ -32,6 +32,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
   late TextEditingController _duController;
   late TextEditingController _clockController;
   late TextEditingController _reasonController;
+  late TextEditingController _descriptionController;
   late TextEditingController _newReasonController;
   late TextEditingController _clockFieldController;
   String _employeeName = '';
@@ -90,6 +91,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialEntry != widget.initialEntry) {
       _initializeControllers();
+      _descriptionController.text = widget.initialEntry?.description ?? '';
     }
   }
 
@@ -98,6 +100,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     _duController = TextEditingController(text: entry?.duNumber ?? '');
     _clockController = TextEditingController(text: entry?.clockNum ?? '');
     _reasonController = TextEditingController(text: entry?.reason ?? '');
+    _descriptionController = TextEditingController(text: entry?.description ?? '');
     _newReasonController = TextEditingController();
     _clockFieldController = TextEditingController(text: entry?.clockNum ?? '');
     _employeeName = entry?.employeeName ?? '';
@@ -199,6 +202,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
     _duController.dispose();
     _clockController.dispose();
     _reasonController.dispose();
+    _descriptionController.dispose();
     _newReasonController.dispose();
     _clockFieldController.dispose();
     super.dispose();
@@ -225,6 +229,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
         ),
         department: _department,
         reason: _reasonController.text.trim(),
+        description: _descriptionController.text.trim(),
         status: widget.initialEntry?.status ?? 'Pending',
         dateEntered: widget.initialEntry?.dateEntered ?? DateTime.now(),
         enteredBy: widget.initialEntry?.enteredBy ?? context.read<UserProvider>().currentUser?.name,
@@ -241,6 +246,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
       _clockController.clear();
       _employeeName = '';
       _reasonController.clear();
+      _descriptionController.clear();
       _shiftType = 'Day';
       _overtimeType = 'Normal Time';
       _press = '';
@@ -498,12 +504,22 @@ class _OvertimeFormState extends State<OvertimeForm> {
 
             TextFormField(
               controller: _reasonController,
-              maxLines: 4,
+              maxLines: 1,
               decoration: const InputDecoration(
-                labelText: 'Reason for Overtime',
+                labelText: 'Reason Category',
                 border: OutlineInputBorder(),
               ),
-              validator: (v) => v!.isEmpty ? 'Please enter a reason' : null,
+              validator: (v) => v!.isEmpty ? 'Please enter a reason category' : null,
+            ),
+            const SizedBox(height: 16),
+
+            TextFormField(
+              controller: _descriptionController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -513,15 +529,6 @@ class _OvertimeFormState extends State<OvertimeForm> {
                 onTap: () => setState(() => _reasonController.text = reason),
                 child: Chip(
                   label: Text(reason),
-                  onDeleted: () async {
-                    final user = Provider.of<UserProvider>(context, listen: false).currentUser;
-                    if (user != null) {
-                      await FirebaseFirestore.instance.collection('employees').doc(user.id).update({
-                        'hiddenReasons': FieldValue.arrayUnion([reason]),
-                      });
-                    }
-                    widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..remove(reason));
-                  },
                 ),
               )).toList(),
             ),
@@ -532,18 +539,22 @@ class _OvertimeFormState extends State<OvertimeForm> {
                   child: TextField(
                     controller: _newReasonController,
                     decoration: const InputDecoration(
-                      labelText: 'Add new reason',
+                      labelText: 'Add new reason category',
                       border: OutlineInputBorder(),
                     ),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.add),
-                  onPressed: () {
+                  onPressed: () async {
                     final newReason = _newReasonController.text.trim();
                     if (newReason.isNotEmpty && !widget.reasonSuggestions.contains(newReason)) {
-                      widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..add(newReason));
-                      _newReasonController.clear();
+                      final user = context.read<UserProvider>().currentUser;
+                      if (user != null) {
+                        await DataService.addReason(newReason, user.name);
+                        widget.onSuggestionsChanged(List.from(widget.reasonSuggestions)..add(newReason));
+                        _newReasonController.clear();
+                      }
                     }
                   },
                 ),

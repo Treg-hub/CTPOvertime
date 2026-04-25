@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
 import 'package:ctp_overtime_tracker/screens/overtime_entries_list_screen.dart';
 import 'package:ctp_overtime_tracker/screens/jobs_list_screen.dart';
+import 'package:ctp_overtime_tracker/main.dart';
 import 'package:intl/intl.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,11 +17,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late Future<List<OvertimeEntry>> _entriesFuture;
+  late TextEditingController _newReasonController;
 
   @override
   void initState() {
     super.initState();
     _loadEntries();
+    _newReasonController = TextEditingController();
   }
 
   void _loadEntries() {
@@ -95,6 +99,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _newReasonController.dispose();
+    super.dispose();
   }
 
   @override
@@ -197,6 +207,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       );
                     },
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Reasons Section
+          ExpansionTile(
+            title: const Text(
+              'Reasons',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            children: [
+              StreamBuilder<List<Map<String, String>>>(
+                stream: DataService.getReasonsStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+                  final reasons = snapshot.data ?? [];
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _newReasonController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Add new reason',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () async {
+                                final newReason = _newReasonController.text.trim();
+                                if (newReason.isNotEmpty) {
+                                  final user = context.read<UserProvider>().currentUser;
+                                  if (user != null) {
+                                    await DataService.addReason(newReason, user.name);
+                                    _newReasonController.clear();
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...reasons.map((reason) => ListTile(
+                        title: Text(reason['reason']!),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () async {
+                            await DataService.deleteReason(reason['id']!);
+                          },
+                        ),
+                      )),
+                    ],
                   );
                 },
               ),

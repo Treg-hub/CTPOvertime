@@ -65,6 +65,26 @@ class DataService {
     await _firestore.collection('jobs').doc(id).delete();
   }
 
+  static Stream<List<Map<String, String>>> getReasonsStream() {
+    return _firestore.collection('reasons').orderBy('reason').snapshots().map((s) => s.docs.map((d) => {'id': d.id, 'reason': d['reason'] as String}).toList());
+  }
+
+  static Future<void> addReason(String reason, String createdBy) async {
+    await _firestore.collection('reasons').add({
+      'reason': reason,
+      'createdBy': createdBy,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<void> updateReason(String id, String newReason) async {
+    await _firestore.collection('reasons').doc(id).update({'reason': newReason});
+  }
+
+  static Future<void> deleteReason(String id) async {
+    await _firestore.collection('reasons').doc(id).delete();
+  }
+
   static Future<List<Map<String, String>>> getEmployees() async {
     final entries = await overtimeEntries;
     final unique = <String, String>{};

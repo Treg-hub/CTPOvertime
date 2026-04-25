@@ -14,6 +14,7 @@ class OvertimeEntry {
   final DateTime endTime;
   final String department;
   final String reason;
+  final String? description;
   final String status; // Pending, Approved, Cancelled
   final DateTime? dateEntered; // When entry was created
   final String? enteredBy; // Who created the entry
@@ -31,6 +32,7 @@ class OvertimeEntry {
     required this.endTime,
     required this.department,
     required this.reason,
+    this.description,
     this.status = 'Pending',
     this.dateEntered,
     this.enteredBy,
@@ -52,6 +54,7 @@ class OvertimeEntry {
         'endTime': Timestamp.fromDate(endTime),
         'department': department,
         'reason': reason,
+        'description': description,
         'status': status,
         'dateEntered': dateEntered != null ? Timestamp.fromDate(dateEntered!) : FieldValue.serverTimestamp(),
         'enteredBy': enteredBy,
@@ -70,6 +73,7 @@ class OvertimeEntry {
         endTime: (map['endTime'] as Timestamp).toDate(),
         department: map['department'],
         reason: map['reason'],
+        description: map['description'],
         status: map['status'] ?? 'Pending',
         dateEntered: map['dateEntered'] != null ? (map['dateEntered'] as Timestamp).toDate() : null,
         enteredBy: map['enteredBy'],
@@ -88,6 +92,7 @@ class OvertimeEntry {
     DateTime? endTime,
     String? department,
     String? reason,
+    String? description,
     String? status,
     DateTime? dateEntered,
     String? enteredBy,
@@ -105,6 +110,7 @@ class OvertimeEntry {
       endTime: endTime ?? this.endTime,
       department: department ?? this.department,
       reason: reason ?? this.reason,
+      description: description ?? this.description,
       status: status ?? this.status,
       dateEntered: dateEntered ?? this.dateEntered,
       enteredBy: enteredBy ?? this.enteredBy,

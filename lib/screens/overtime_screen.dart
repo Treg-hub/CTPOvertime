@@ -24,26 +24,20 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   void initState() {
     super.initState();
     _selectedEntry = widget.initialEntry;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsedReasons());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadReasons());
   }
 
-  Future<void> _loadUsedReasons() async {
-    try {
-      final entries = await DataService.overtimeEntries;
-      final user = Provider.of<UserProvider>(context, listen: false).currentUser;
-      final userName = user?.name ?? '';
-      final hidden = user?.hiddenReasons?.cast<String>() ?? <String>[];
-      final filteredEntries = entries.where((e) => e.enteredBy == userName);
+  void _loadReasons() {
+    DataService.getReasonsStream().listen((reasons) {
       setState(() {
-        _reasonSuggestions = filteredEntries.map((e) => e.reason).where((r) => r != null && r.trim().isNotEmpty && !hidden.contains(r)).toSet().toList()..sort();
+        _reasonSuggestions = reasons.map((r) => r['reason']!).toList();
       });
-    } catch (e) {
-      // If error, keep empty or use defaults
+    }, onError: (e) {
+      print('Error loading reasons: $e');
       setState(() {
         _reasonSuggestions = ['Sick Leave', 'Annual Leave', 'Run 3rd Machine'];
       });
-      print('Error loading used reasons: $e');
-    }
+    });
   }
 
   void _selectEntry(OvertimeEntry entry) {
@@ -74,6 +68,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
         endTime: _selectedEntry!.endTime,
         department: _selectedEntry!.department,
         reason: _selectedEntry!.reason,
+        description: _selectedEntry!.description,
       );
       await DataService.addOvertime(newEntry);
       setState(() {
@@ -131,46 +126,48 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
-                                style: Theme.of(context).textTheme.headlineSmall,
-                              ),
-                              Row(
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: _addNew,
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Add New'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _isDuplicating
-                                    ? ElevatedButton.icon(
-                                        onPressed: null,
-                                        icon: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        ),
-                                        label: const Text('Duplicating'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      )
-                                    : OutlinedButton.icon(
-                                        onPressed: _selectedEntry != null ? _duplicate : null,
-                                        icon: const Icon(Icons.copy),
-                                        label: const Text('Duplicate'),
-                                      ),
-                                ],
-                              ),
-                            ],
-                          ),
+                           Row(
+                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                             children: [
+                               Text(
+                                 _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
+                                 style: Theme.of(context).textTheme.headlineSmall,
+                               ),
+                               Flexible(
+                                 child: Row(
+                                   children: [
+                                     ElevatedButton.icon(
+                                       onPressed: _addNew,
+                                       icon: const Icon(Icons.add),
+                                       label: const Text('Add New'),
+                                     ),
+                                     const SizedBox(width: 8),
+                                     _isDuplicating
+                                       ? ElevatedButton.icon(
+                                           onPressed: null,
+                                           icon: const SizedBox(
+                                             width: 16,
+                                             height: 16,
+                                             child: CircularProgressIndicator(
+                                               strokeWidth: 2,
+                                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                             ),
+                                           ),
+                                           label: const Text('Duplicating'),
+                                           style: ElevatedButton.styleFrom(
+                                             backgroundColor: Colors.green,
+                                           ),
+                                         )
+                                       : OutlinedButton.icon(
+                                           onPressed: _selectedEntry != null ? _duplicate : null,
+                                           icon: const Icon(Icons.copy),
+                                           label: const Text('Duplicate'),
+                                         ),
+                                   ],
+                                 ),
+                               ),
+                             ],
+                           ),
                           const SizedBox(height: 24),
                           Expanded(
                             child: OvertimeForm(
@@ -246,46 +243,48 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
-                                style: Theme.of(context).textTheme.headlineSmall,
-                              ),
-                              Row(
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: _addNew,
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Add New'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _isDuplicating
-                                    ? ElevatedButton.icon(
-                                        onPressed: null,
-                                        icon: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        ),
-                                        label: const Text('Duplicating'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      )
-                                    : OutlinedButton.icon(
-                                        onPressed: _selectedEntry != null ? _duplicate : null,
-                                        icon: const Icon(Icons.copy),
-                                        label: const Text('Duplicate'),
-                                      ),
-                                ],
-                              ),
-                            ],
-                          ),
+                           Row(
+                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                             children: [
+                               Text(
+                                 _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
+                                 style: Theme.of(context).textTheme.headlineSmall,
+                               ),
+                               Flexible(
+                                 child: Row(
+                                   children: [
+                                     ElevatedButton.icon(
+                                       onPressed: _addNew,
+                                       icon: const Icon(Icons.add),
+                                       label: const Text('Add New'),
+                                     ),
+                                     const SizedBox(width: 8),
+                                     _isDuplicating
+                                       ? ElevatedButton.icon(
+                                           onPressed: null,
+                                           icon: const SizedBox(
+                                             width: 16,
+                                             height: 16,
+                                             child: CircularProgressIndicator(
+                                               strokeWidth: 2,
+                                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                             ),
+                                           ),
+                                           label: const Text('Duplicating'),
+                                           style: ElevatedButton.styleFrom(
+                                             backgroundColor: Colors.green,
+                                           ),
+                                         )
+                                       : OutlinedButton.icon(
+                                           onPressed: _selectedEntry != null ? _duplicate : null,
+                                           icon: const Icon(Icons.copy),
+                                           label: const Text('Duplicate'),
+                                         ),
+                                   ],
+                                 ),
+                               ),
+                             ],
+                           ),
                           const SizedBox(height: 24),
                           Expanded(
                             child: OvertimeForm(
