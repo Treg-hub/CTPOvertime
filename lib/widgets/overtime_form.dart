@@ -76,7 +76,6 @@ class _OvertimeFormState extends State<OvertimeForm> {
 
   // Employees loaded from Firebase
   List<Map<String, String>> _employees = []; // [{name: "...", clock: "...", department: "..."}]
-  bool _loadingEmployees = true;
 
   @override
   void initState() {
@@ -122,7 +121,7 @@ class _OvertimeFormState extends State<OvertimeForm> {
 
   Future<void> _loadEmployeesFromFirebase() async {
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('employees').get();
+      final snapshot = await FirebaseFirestore.instance.collection('employees').get().timeout(const Duration(seconds: 5));
       setState(() {
         _employees = snapshot.docs.map((doc) {
           final data = doc.data();
@@ -132,7 +131,6 @@ class _OvertimeFormState extends State<OvertimeForm> {
             'department': data['department']?.toString() ?? '',
           };
         }).where((emp) => (emp['clock'] ?? '').isNotEmpty).toList();
-        _loadingEmployees = false;
         if (widget.initialEntry != null && _clockController.text.isNotEmpty) {
           final emp = _employees.firstWhereOrNull((e) => e['clock'] == _clockController.text);
           if (emp == null) {
@@ -143,22 +141,11 @@ class _OvertimeFormState extends State<OvertimeForm> {
             _department = _normalizeDepartment(emp['department']!);
           }
         }
-        print('Loaded ${_employees.length} employees');
       });
     } catch (e) {
-      // If Firebase not set up yet, use mock data
       setState(() {
-        _employees = [
-          {'name': 'Sanjeev Davarajh', 'clock': '7292', 'department': 'PostPress'},
-          {'name': 'Rav', 'clock': '4639', 'department': 'Electrical'},
-          {'name': 'John Smith', 'clock': '5422', 'department': 'Pressroom'},
-          {'name': 'Maria Santos', 'clock': '19043', 'department': 'PrePress'},
-          {'name': 'Thabo Molefe', 'clock': '6095', 'department': 'Mechanical'},
-          {'name': 'Priya Naidoo', 'clock': '19041', 'department': 'PostPress'},
-        ];
-        _loadingEmployees = false;
+        _employees = [];
       });
-      print('Using mock employees (Firebase not connected): $e');
     }
   }
 

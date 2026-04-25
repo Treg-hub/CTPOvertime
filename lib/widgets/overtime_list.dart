@@ -27,6 +27,7 @@ class OvertimeList extends StatelessWidget {
         final isSelected = entry.id == selectedId;
 
         return Card(
+          key: ValueKey(entry.id),
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
           child: ListTile(

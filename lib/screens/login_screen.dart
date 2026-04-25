@@ -46,28 +46,35 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: password,
       );
+      print('Login: Sign in successful'); // Debug
 
       // Use the authenticated user's UID for profile lookup (more secure)
       final uid = firebase_auth.FirebaseAuth.instance.currentUser!.uid;
       print('Login: Authenticated UID: $uid'); // Debug
 
       // Fetch additional profile from employees collection (by UID)
+      print('Login: Querying Firestore for UID: $uid'); // Debug
       final snapshot = await FirebaseFirestore.instance
           .collection('employees')
           .where('uid', isEqualTo: uid)
           .where('position', isEqualTo: 'Manager')
           .limit(1)
           .get();
+      print('Login: Query returned ${snapshot.docs.length} docs for UID: $uid'); // Debug
 
       if (snapshot.docs.isNotEmpty) {
         final doc = snapshot.docs.first;
+        print('Login: First doc data: ${doc.data()}'); // Debug
         final appUser = User.fromMap(doc.data(), doc.id);
+        print('Login: Found user: ${appUser.name}, calling userProvider.login()'); // Debug
 
         if (mounted) {
           userProvider.login(appUser);
         }
       } else {
+        print('Login: No documents found for UID: $uid, position: Manager'); // Debug
         // Sign out if no matching manager profile found
+        print('Login: No manager profile found, signing out'); // Debug
         await firebase_auth.FirebaseAuth.instance.signOut();
         setState(() {
           _errorMessage = 'No manager profile found for this account. Contact admin.';

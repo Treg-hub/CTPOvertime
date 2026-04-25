@@ -71,6 +71,7 @@ class UserProvider extends ChangeNotifier {
   void login(User user) {
     _currentUser = user;
     _authError = null; // Clear any previous error
+    print('UserProvider: login called for ${user.name}'); // Debug
     notifyListeners();
   }
 
@@ -100,10 +101,12 @@ class UserProvider extends ChangeNotifier {
       print('AuthWrapper: Query returned ${snapshot.docs.length} docs'); // Debug
 
       if (snapshot.docs.isNotEmpty) {
+        print('AuthWrapper: First doc data: ${snapshot.docs.first.data()}'); // Debug
         final appUser = User.fromMap(snapshot.docs.first.data(), snapshot.docs.first.id);
         login(appUser);
         print('AuthWrapper: Logged in user: ${appUser.name}'); // Debug
       } else {
+        print('AuthWrapper: No documents found for UID: $uid, position: Manager'); // Debug
         setAuthError('No manager profile found for this account. Contact admin.');
         await firebase_auth.FirebaseAuth.instance.signOut();
         print('AuthWrapper: No manager profile found, signed out'); // Debug
@@ -142,42 +145,48 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
+    return Consumer<UserProvider>(
+      builder: (context, userProvider, child) {
+        return StreamBuilder<firebase_auth.User?>(
+          stream: firebase_auth.FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            print('AuthWrapper: hasData=${snapshot.hasData}, currentUser=${userProvider.currentUser?.name ?? 'null'}, isLoading=${userProvider.isLoading}'); // Debug
 
-    return StreamBuilder<firebase_auth.User?>(
-      stream: firebase_auth.FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || userProvider.isLoading) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFFF6B35),
-              ),
-            ),
-          );
-        }
-
-        if (snapshot.hasData) {
-          // Firebase user exists
-          if (userProvider.currentUser != null) {
-            return const MainNavigation();
-          } else {
-            // Auto-fetch manager profile
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Provider.of<UserProvider>(context, listen: false).loadFromFirebase(snapshot.data!);
-            });
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFFFF6B35),
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6B35),
+                  ),
                 ),
-              ),
-            );
-          }
-        }
+              );
+            }
 
-        // No Firebase user
-        return const LoginScreen();
+            if (snapshot.hasData) {
+              // Firebase user exists
+              if (userProvider.currentUser != null) {
+                print('AuthWrapper: Showing MainNavigation'); // Debug
+                return const MainNavigation();
+              } else {
+                // Auto-fetch manager profile
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Provider.of<UserProvider>(context, listen: false).loadFromFirebase(snapshot.data!);
+                });
+                return const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFFFF6B35),
+                    ),
+                  ),
+                );
+              }
+            }
+
+            // No Firebase user
+            print('AuthWrapper: Showing LoginScreen'); // Debug
+            return const LoginScreen();
+          },
+        );
       },
     );
   }

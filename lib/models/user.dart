@@ -18,14 +18,14 @@ class User {
   });
 
   factory User.fromMap(Map<String, dynamic> map, String id) => User(
-        id: id,
-        name: map['name'] ?? '',
-        clockNum: map['clockNo'] ?? '',
-        department: map['department'] ?? '',
-        email: map['email'] ?? '',
-        isManager: map['position'] == 'Manager',
-        hiddenReasons: List<String>.from(map['hiddenReasons'] ?? []),
-      );
+         id: id,
+         name: map['name'] ?? '',
+         clockNum: map['clockNo'] ?? '',
+         department: map['department'] ?? '',
+         email: map['email'] ?? '',
+         isManager: map['position'] == 'Manager',
+         hiddenReasons: List<String>.from(map['hiddenReasons'] ?? []),
+       );
 
   Map<String, dynamic> toMap() => {
         'name': name,
