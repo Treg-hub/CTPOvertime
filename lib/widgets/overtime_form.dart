@@ -74,6 +74,8 @@ class OvertimeFormState extends State<OvertimeForm> {
 
   // Employees loaded from Firebase
   List<Map<String, String>> _employees = []; // [{name: "...", clock: "...", department: "..."}]
+  bool _isLoadingEmployees = true;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -126,10 +128,12 @@ class OvertimeFormState extends State<OvertimeForm> {
             'department': data['department']?.toString() ?? '',
           };
         }).where((emp) => (emp['clock'] ?? '').isNotEmpty).toList();
+        _isLoadingEmployees = false;
       });
     } catch (e) {
       setState(() {
         _employees = [];
+        _isLoadingEmployees = false;
       });
     }
   }
@@ -246,20 +250,12 @@ class OvertimeFormState extends State<OvertimeForm> {
 
 
   void _showEmployeeDialog() {
+    final searchNotifier = ValueNotifier<String>('');
+    final selectedClocksNotifier = ValueNotifier<Set<String>>(Set.from(selectedEmployees.map((e) => e['clock']!)));
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          String searchQuery = '';
-          Set<String> selectedClocks = Set.from(selectedEmployees.map((e) => e['clock']!));
-          List<Map<String, String>> filteredEmployees = _employees.where((emp) {
-            final deptMatch = widget.selectedDept == 'All' || emp['department'] == widget.selectedDept;
-            final searchMatch = searchQuery.isEmpty ||
-              emp['clock']!.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              emp['name']!.toLowerCase().contains(searchQuery.toLowerCase());
-            final notSelected = !selectedEmployees.any((s) => s['clock'] == emp['clock']);
-            return deptMatch && searchMatch && notSelected;
-          }).toList();
           return AlertDialog(
             title: const Text('Select Employees'),
             content: SizedBox(
@@ -272,29 +268,51 @@ class OvertimeFormState extends State<OvertimeForm> {
                       labelText: 'Search by Clock or Name',
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: (value) => setDialogState(() => searchQuery = value),
+                    onChanged: (value) => searchNotifier.value = value,
                   ),
                   const SizedBox(height: 8),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: filteredEmployees.length,
-                      itemBuilder: (context, index) {
-                        final emp = filteredEmployees[index];
-                        return CheckboxListTile(
-                          title: Text('${emp['clock']} - ${emp['name']}'),
-                          subtitle: Text(emp['department']!),
-                          value: selectedClocks.contains(emp['clock']),
-                          onChanged: (bool? value) {
-                            setDialogState(() {
-                              if (value == true) {
-                                selectedClocks.add(emp['clock']!);
-                              } else {
-                                selectedClocks.remove(emp['clock']);
-                              }
-                            });
-                          },
-                        );
-                      },
+                  ValueListenableBuilder<String>(
+                    valueListenable: searchNotifier,
+                    builder: (context, searchQuery, child) => ValueListenableBuilder<Set<String>>(
+                      valueListenable: selectedClocksNotifier,
+                      builder: (context, selectedClocks, child) => Expanded(
+                        child: _isLoadingEmployees
+                          ? const Center(child: CircularProgressIndicator())
+                          : _employees.isEmpty
+                            ? const Center(child: Text('No employees found'))
+                            : Builder(
+                                builder: (context) {
+                                  final filteredEmployees = _employees.where((emp) {
+                                    final deptMatch = widget.selectedDept == 'All' || emp['department'] == widget.selectedDept;
+                                    final searchMatch = searchQuery.isEmpty ||
+                                      emp['clock']!.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                                      emp['name']!.toLowerCase().contains(searchQuery.toLowerCase());
+                                    final notManager = emp['department'] != 'Manager';
+                                    return deptMatch && searchMatch && notManager;
+                                  }).toList();
+                                  return ListView.builder(
+                                    itemCount: filteredEmployees.length,
+                                    itemBuilder: (context, index) {
+                                      final emp = filteredEmployees[index];
+                                      return CheckboxListTile(
+                                        title: Text('${emp['clock']} - ${emp['name']}'),
+                                        subtitle: Text(emp['department']!),
+                                        value: selectedClocks.contains(emp['clock']),
+                                        onChanged: (bool? value) {
+                                          final newSet = Set<String>.from(selectedClocks);
+                                          if (value == true) {
+                                            newSet.add(emp['clock']!);
+                                          } else {
+                                            newSet.remove(emp['clock']);
+                                          }
+                                          selectedClocksNotifier.value = newSet;
+                                        },
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
                     ),
                   ),
                 ],
@@ -307,19 +325,27 @@ class OvertimeFormState extends State<OvertimeForm> {
               ),
               ElevatedButton(
                 onPressed: () {
+                  final selectedClocks = selectedClocksNotifier.value;
                   setState(() {
+                    selectedEmployees.removeWhere((s) => !selectedClocks.contains(s['clock']));
                     for (final clock in selectedClocks) {
-                      final emp = _employees.firstWhere((e) => e['clock'] == clock);
-                      selectedEmployees.add({
-                        'clock': emp['clock']!,
-                        'name': emp['name']!,
-                        'department': emp['department']!,
-                      });
+                      if (!selectedEmployees.any((s) => s['clock'] == clock)) {
+                        final emp = _employees.firstWhere((e) => e['clock'] == clock, orElse: () => <String, String>{});
+                        if (emp.isNotEmpty) {
+                          selectedEmployees.add({
+                            'clock': emp['clock']!,
+                            'name': emp['name']!,
+                            'department': emp['department']!,
+                          });
+                        }
+                      }
                     }
                   });
+                  searchNotifier.dispose();
+                  selectedClocksNotifier.dispose();
                   Navigator.of(context).pop();
                 },
-                child: const Text('Add Selected'),
+                child: const Text('Update Selection'),
               ),
             ],
           );
@@ -337,12 +363,14 @@ class OvertimeFormState extends State<OvertimeForm> {
     super.dispose();
   }
 
-  void _save() {
-    if (_formKey.currentState!.validate()) {
-      if (selectedEmployees.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one employee')));
-        return;
-      }
+  void _save() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
+    if (selectedEmployees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one employee')));
+      return;
+    }
+    setState(() => _isSaving = true);
+    try {
       for (var emp in selectedEmployees) {
         final entry = OvertimeEntry(
           duNumber: _duController.text.trim(),
@@ -361,9 +389,14 @@ class OvertimeFormState extends State<OvertimeForm> {
           dateEntered: DateTime.now(),
           enteredBy: context.read<UserProvider>().currentUser?.name,
         );
-        widget.onSave(entry);
+        await widget.onSave(entry);
       }
       _clearForm();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved successfully')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    } finally {
+      setState(() => _isSaving = false);
     }
   }
 
@@ -615,9 +648,9 @@ class OvertimeFormState extends State<OvertimeForm> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _save,
-                    icon: const Icon(Icons.save),
-                    label: const Text('Save & Submit for Approval'),
+                    onPressed: _isSaving ? null : _save,
+                    icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+                    label: Text(_isSaving ? 'Saving...' : 'Save & Submit for Approval'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
