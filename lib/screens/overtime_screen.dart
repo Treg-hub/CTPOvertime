@@ -276,7 +276,7 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
   Widget build(BuildContext context) {
     return StreamBuilder<List<OvertimeEntry>>(
       stream: _stream,
-      initialData: [],
+      initialData: const [],
       builder: (context, snapshot) {
         final entries = snapshot.data ?? [];
         final hasData = entries.isNotEmpty;
@@ -334,6 +334,31 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
                   child: OvertimeList(
                     entries: filteredEntries,
                     onSelect: widget.onSelect,
+                    onDelete: (entry) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Delete Entry'),
+                          content: const Text('Are you sure you want to delete this overtime entry?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                await DataService.deleteOvertime(entry.id);
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Entry deleted')),
+                                );
+                              },
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                     selectedId: widget.selectedId,
                   ),
                 ),
