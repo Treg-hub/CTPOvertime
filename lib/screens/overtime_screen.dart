@@ -4,6 +4,8 @@ import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_form.dart';
 import 'package:ctp_overtime_tracker/widgets/overtime_list.dart';
+import 'package:provider/provider.dart';
+import 'package:ctp_overtime_tracker/main.dart';
 
 class OvertimeFormPanel extends StatefulWidget {
   final OvertimeEntry? initialEntry;
@@ -12,6 +14,7 @@ class OvertimeFormPanel extends StatefulWidget {
   final List<String> reasonSuggestions;
   final Function(List<String>) onSuggestionsChanged;
   final String selectedDept;
+  final String currentUserDept;
 
   const OvertimeFormPanel({
     super.key,
@@ -21,6 +24,7 @@ class OvertimeFormPanel extends StatefulWidget {
     required this.reasonSuggestions,
     required this.onSuggestionsChanged,
     required this.selectedDept,
+    required this.currentUserDept,
   });
 
   @override
@@ -33,6 +37,8 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   bool _isDuplicating = false;
   bool _isSavingDuplicating = false;
   List<String> _reasonSuggestions = [];
+
+  bool get _isReadOnly => widget.initialEntry != null && widget.initialEntry!.department != widget.currentUserDept;
 
   @override
   void initState() {
@@ -70,6 +76,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   }
 
   void _addNew() {
+    if (_isReadOnly) return;
     setState(() {
       _selectedEntry = null;
     });
@@ -77,7 +84,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   }
 
   void _duplicate() async {
-    if (_selectedEntry != null) {
+    if (_selectedEntry != null && !_isReadOnly) {
       setState(() => _isDuplicating = true);
       final newEntry = OvertimeEntry(
         duNumber: _selectedEntry!.duNumber,
@@ -89,7 +96,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
         overtimeType: _selectedEntry!.overtimeType,
         startTime: _selectedEntry!.startTime,
         endTime: _selectedEntry!.endTime,
-        department: _selectedEntry!.department,
+        department: widget.currentUserDept, // force to own dept for new
         reason: _selectedEntry!.reason,
         description: _selectedEntry!.description,
       );
@@ -101,12 +108,13 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
       widget.onEntryChanged(newEntry);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entry duplicated')),
+        const SnackBar(content: Text('Entry duplicated (saved to your department)')),
       );
     }
   }
 
   void _saveEntry(OvertimeEntry entry) async {
+    if (_isReadOnly) return;
     if (entry.id.isNotEmpty) {
       await DataService.updateOvertime(entry);
     } else {
@@ -124,6 +132,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   }
 
   void _saveAndDuplicate() async {
+    if (_isReadOnly) return;
     setState(() => _isSavingDuplicating = true);
     final formState = _formKey.currentState;
     if (formState!.validateForm()) {
@@ -139,6 +148,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
         id: const Uuid().v4(),
         dateEntered: null,
         enteredBy: null,
+        department: widget.currentUserDept,
       );
       setState(() {
         _selectedEntry = dupEntry;
@@ -157,6 +167,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final isReadOnly = _isReadOnly;
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
@@ -170,20 +181,24 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: Text(
-                    _selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry',
-                    key: ValueKey(_selectedEntry == null),
+                    isReadOnly 
+                      ? 'View Overtime Entry (Read-Only - Other Dept)'
+                      : (_selectedEntry == null ? 'New Overtime Entry' : 'Edit Overtime Entry'),
+                    key: ValueKey(_selectedEntry == null || isReadOnly),
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                 ),
                 Flexible(
                   child: Row(
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: _addNew,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add New'),
-                      ),
-                      const SizedBox(width: 8),
+                      if (!isReadOnly) ...[
+                        ElevatedButton.icon(
+                          onPressed: _addNew,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add New'),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       _isDuplicating
                         ? ElevatedButton.icon(
                             onPressed: null,
@@ -201,7 +216,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                             ),
                           )
                         : OutlinedButton.icon(
-                            onPressed: _selectedEntry != null ? _duplicate : null,
+                            onPressed: (_selectedEntry != null && !isReadOnly) ? _duplicate : null,
                             icon: const Icon(Icons.copy),
                             label: const Text('Duplicate'),
                           ),
@@ -223,7 +238,7 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                             ),
                           )
                         : ElevatedButton.icon(
-                            onPressed: _saveAndDuplicate,
+                            onPressed: !isReadOnly ? _saveAndDuplicate : null,
                             icon: const Icon(Icons.save_as),
                             label: const Text('Save & Duplicate'),
                           ),
@@ -232,6 +247,14 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
                 ),
               ],
             ),
+            if (isReadOnly)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                child: Text(
+                  'This entry belongs to another department. Switch the dropdown to your department to enable editing.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange),
+                ),
+              ),
             const SizedBox(height: 24),
             Expanded(
               child: OvertimeForm(
@@ -255,6 +278,7 @@ class OvertimeListPanel extends StatefulWidget {
   final String? selectedId;
   final String selectedDept;
   final Function(String) onDeptChanged;
+  final String currentUserDept;
 
   const OvertimeListPanel({
     super.key,
@@ -262,6 +286,7 @@ class OvertimeListPanel extends StatefulWidget {
     this.selectedId,
     required this.selectedDept,
     required this.onDeptChanged,
+    required this.currentUserDept,
   });
 
   @override
@@ -281,12 +306,10 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
         final entries = snapshot.data ?? [];
         final hasData = entries.isNotEmpty;
 
-        // Mark as loaded once we have data
         if (hasData && !_hasLoadedInitially) {
           _hasLoadedInitially = true;
         }
 
-        // Show loading only on very first load
         if (snapshot.connectionState == ConnectionState.waiting && !_hasLoadedInitially) {
           return const Card(
             margin: EdgeInsets.all(16),
@@ -294,7 +317,6 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
           );
         }
 
-        // If we have data, show it even if connection state changes
         if (_hasLoadedInitially && hasData) {
           final filteredEntries = widget.selectedDept == 'All' ? entries : entries.where((e) => e.department == widget.selectedDept).toList();
           final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
@@ -335,6 +357,12 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
                     entries: filteredEntries,
                     onSelect: widget.onSelect,
                     onDelete: (entry) {
+                      if (entry.department != widget.currentUserDept) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cannot delete entries from other departments. Switch dropdown to your department.')),
+                        );
+                        return;
+                      }
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -367,7 +395,6 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
           );
         }
 
-        // Handle errors
         if (snapshot.hasError) {
           return Card(
             margin: const EdgeInsets.all(16),
@@ -375,7 +402,6 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
           );
         }
 
-        // Fallback for empty state
         return const Card(
           margin: EdgeInsets.all(16),
           child: Center(child: Text('No overtime entries found')),
@@ -397,11 +423,22 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   OvertimeEntry? _selectedEntry;
   List<String> _reasonSuggestions = [];
   String _selectedDept = 'All';
+  String _currentUserDept = 'All';
 
   @override
   void initState() {
     super.initState();
     _selectedEntry = widget.initialEntry;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.currentUser;
+      if (user != null && user.department.isNotEmpty) {
+        setState(() {
+          _currentUserDept = user.department;
+          _selectedDept = user.department; // Default to manager's own department for roles
+        });
+      }
+    });
   }
 
   void _selectEntry(OvertimeEntry entry) {
@@ -444,6 +481,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 reasonSuggestions: _reasonSuggestions,
                 onSuggestionsChanged: _onSuggestionsChanged,
                 selectedDept: _selectedDept,
+                currentUserDept: _currentUserDept,
               ),
             ),
             Expanded(
@@ -453,6 +491,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 selectedId: _selectedEntry?.id,
                 selectedDept: _selectedDept,
                 onDeptChanged: _onDeptChanged,
+                currentUserDept: _currentUserDept,
               ),
             ),
           ],
@@ -467,6 +506,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 reasonSuggestions: _reasonSuggestions,
                 onSuggestionsChanged: _onSuggestionsChanged,
                 selectedDept: _selectedDept,
+                currentUserDept: _currentUserDept,
               ),
             ),
             Expanded(
@@ -476,6 +516,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 selectedId: _selectedEntry?.id,
                 selectedDept: _selectedDept,
                 onDeptChanged: _onDeptChanged,
+                currentUserDept: _currentUserDept,
               ),
             ),
           ],
