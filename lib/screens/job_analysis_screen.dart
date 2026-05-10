@@ -97,26 +97,6 @@ class _JobAnalysisScreenState extends State<JobAnalysisScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Job Selector - FIXED
-              DropdownButtonFormField<String>(
-                initialValue: _selectedJob?.id,
-                decoration: const InputDecoration(
-                  labelText: 'Select Job',
-                  border: OutlineInputBorder(),
-                ),
-                items: jobs.map((job) => DropdownMenuItem(
-                  value: job.id,
-                  child: Text('${job.duNumber} - ${job.jobName} (${job.press})'),
-                )).toList(),
-                onChanged: (jobId) {
-                  setState(() {
-                    _selectedJob = jobs.firstWhere((j) => j.id == jobId);
-                  });
-                  _calculateOverlaps();
-                },
-              ),
-              const SizedBox(height: 24),
-
               Expanded(
                 child: Row(
                   children: [
@@ -263,14 +243,14 @@ class _JobAnalysisScreenState extends State<JobAnalysisScreen> {
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: Text(
-                                'All Jobs (Total Overlap Hours)',
+                                'All Jobs (Sorted by Start Date - Newest First)',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),
                             Expanded(
                               child: ListView(
                                 children: () {
-                                  final sortedJobs = _allJobs.toList()..sort((a, b) => (_jobTotalOverlaps[b.id] ?? 0.0).compareTo(_jobTotalOverlaps[a.id] ?? 0.0));
+                                  final sortedJobs = _allJobs.toList()..sort((a, b) => b.startDateTime.compareTo(a.startDateTime));
                                   return sortedJobs.map((job) {
                                     final total = _jobTotalOverlaps[job.id] ?? 0.0;
                                     return ListTile(
