@@ -43,7 +43,7 @@ class OvertimeList extends StatelessWidget {
             ),
             title: Text('${entry.employeeName} (${entry.clockNum})'),
             subtitle: Text(
-              '${DateFormat('yyyy-MM-dd').format(entry.date)} • ${entry.shiftType} • ${entry.department} • ${entry.hours.toStringAsFixed(1)} hrs',
+              '${entry.overtimeNumber ?? 'N/A'} • ${DateFormat('yyyy-MM-dd').format(entry.date)} • ${entry.shiftType} • ${entry.department} • ${entry.hours.toStringAsFixed(1)} hrs',
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,

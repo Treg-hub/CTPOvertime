@@ -55,7 +55,16 @@ class DataService {
   }
 
   static Future<void> updateOvertime(OvertimeEntry entry) async {
-    await _firestore.collection('overtime_entries').doc(entry.id).update(entry.toMap());
+    if (entry.id.isEmpty) {
+      // Safety: if no ID, treat as new entry
+      await addOvertime(entry.copyWith(id: null));
+      return;
+    }
+    try {
+      await _firestore.collection('overtime_entries').doc(entry.id).update(entry.toMap());
+    } catch (e) {
+      throw Exception('Failed to update overtime entry: $e');
+    }
   }
 
   static Future<void> deleteOvertime(String id) async {
@@ -86,7 +95,21 @@ class DataService {
     await _firestore.collection('reasons').doc(id).delete();
   }
 
-
+  static Future<String> getNextOvertimeNumber() async {
+    final docRef = _firestore.collection('counters').doc('overtime');
+    return await _firestore.runTransaction<String>((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      final current;
+      if (snapshot.exists) {
+        current = snapshot.data()?['current'] ?? 0;
+      } else {
+        current = 0;
+      }
+      final next = current + 1;
+      transaction.update(docRef, {'current': next});
+      return '#${next.toString().padLeft(4, '0')}';
+    });
+  }
 
   // Smart overlap calculation
   static Future<List<Map<String, dynamic>>> getOverlappingOvertime(Job job) async {

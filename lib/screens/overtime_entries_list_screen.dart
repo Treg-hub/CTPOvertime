@@ -84,7 +84,11 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                 child: OvertimeForm(
                   initialEntry: entry,
                   onSave: (updatedEntry) async {
-                    await DataService.updateOvertime(updatedEntry);
+                    if (updatedEntry.id.isNotEmpty) {
+                      await DataService.updateOvertime(updatedEntry);
+                    } else {
+                      await DataService.addOvertime(updatedEntry);
+                    }
                     Navigator.pop(context);
                     setState(() {
                       _loadEntries();
@@ -147,6 +151,7 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                   child: DataTable(
                     columnSpacing: 16,
                     columns: const [
+                      DataColumn(label: Text('OT #')),
                       DataColumn(label: Text('Clock')),
                       DataColumn(label: Text('Name')),
                       DataColumn(label: Text('Date')),
@@ -166,6 +171,7 @@ class _OvertimeEntriesListScreenState extends State<OvertimeEntriesListScreen> {
                       return DataRow(
                         onSelectChanged: (_) => _showEditDialog(entry),
                         cells: [
+                          DataCell(SizedBox(width: 60, child: Text(entry.overtimeNumber ?? 'N/A'))),
                           DataCell(SizedBox(width: 60, child: Text(entry.clockNum))),
                           DataCell(SizedBox(width: 100, child: Text(entry.employeeName, overflow: TextOverflow.ellipsis))),
                           DataCell(SizedBox(width: 80, child: Text(DateFormat('MM/dd').format(entry.date)))),

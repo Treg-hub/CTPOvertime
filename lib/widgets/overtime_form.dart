@@ -76,13 +76,25 @@ class OvertimeFormState extends State<OvertimeForm> {
   List<Map<String, String>> _employees = []; // [{name: "...", clock: "...", department: "..."}]
   bool _isLoadingEmployees = true;
   bool _isSaving = false;
+  String? _previewNumber; // For new entries, show next number preview
 
   @override
   void initState() {
     super.initState();
     _initializeControllers();
     _loadEmployeesFromFirebase();
+    if (widget.initialEntry == null) {
+      _generatePreviewNumber();
+    }
+  }
 
+  Future<void> _generatePreviewNumber() async {
+    try {
+      _previewNumber = await DataService.getNextOvertimeNumber();
+      setState(() {});
+    } catch (e) {
+      // Ignore, will show N/A
+    }
   }
 
   @override
@@ -372,7 +384,9 @@ class OvertimeFormState extends State<OvertimeForm> {
     setState(() => _isSaving = true);
     try {
       for (var emp in selectedEmployees) {
+        final overtimeNumber = widget.initialEntry != null ? widget.initialEntry!.overtimeNumber : await DataService.getNextOvertimeNumber();
         final entry = OvertimeEntry(
+          id: widget.initialEntry?.id,
           duNumber: _duController.text.trim(),
           clockNum: emp['clock']!,
           employeeName: emp['name']!,
@@ -388,8 +402,13 @@ class OvertimeFormState extends State<OvertimeForm> {
           status: 'Pending',
           dateEntered: DateTime.now(),
           enteredBy: context.read<UserProvider>().currentUser?.name,
+          overtimeNumber: overtimeNumber,
         );
-        await widget.onSave(entry);
+        if (entry.id.isNotEmpty) {
+          await DataService.updateOvertime(entry);
+        } else {
+          await DataService.addOvertime(entry);
+        }
       }
       _clearForm();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved successfully')));
@@ -435,6 +454,7 @@ class OvertimeFormState extends State<OvertimeForm> {
       status: widget.initialEntry?.status ?? 'Pending',
       dateEntered: widget.initialEntry?.dateEntered ?? DateTime.now(),
       enteredBy: widget.initialEntry?.enteredBy ?? context.read<UserProvider>().currentUser?.name,
+      overtimeNumber: widget.initialEntry?.overtimeNumber,
     );
   }
 
@@ -445,6 +465,16 @@ class OvertimeFormState extends State<OvertimeForm> {
       child: SingleChildScrollView(
         child: Column(
           children: [
+            // Overtime Number (read-only)
+            if (widget.initialEntry?.overtimeNumber != null || _previewNumber != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'Overtime Number: ${widget.initialEntry?.overtimeNumber ?? _previewNumber ?? 'N/A'}',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Theme.of(context).primaryColor),
+                ),
+              ),
+
             // DU Number
             TextFormField(
               controller: _duController,

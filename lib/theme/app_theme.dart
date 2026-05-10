@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const Color primaryOrange = Color(0xFFFF6D00); // Main orange
+  static const Color primaryOrange = Colors.orange; // Main orange
   static const Color accentGreen = Color(0xFF4CAF50); // Badenia
   static const Color accentYellow = Color(0xFFFF9800); // Wifag
   static const Color accentBlue = Color(0xFF2196F3);  // Aurora

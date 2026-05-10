@@ -107,10 +107,10 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
   }
 
   void _saveEntry(OvertimeEntry entry) async {
-    if (_selectedEntry == null) {
-      await DataService.addOvertime(entry);
-    } else {
+    if (entry.id.isNotEmpty) {
       await DataService.updateOvertime(entry);
+    } else {
+      await DataService.addOvertime(entry);
     }
     setState(() {
       _selectedEntry = null; // Clear form after save
@@ -129,10 +129,10 @@ class _OvertimeFormPanelState extends State<OvertimeFormPanel> {
     if (formState!.validateForm()) {
       final entry = formState.getCurrentEntry();
       // save
-      if (_selectedEntry == null) {
-        await DataService.addOvertime(entry);
-      } else {
+      if (entry.id.isNotEmpty) {
         await DataService.updateOvertime(entry);
+      } else {
+        await DataService.addOvertime(entry);
       }
       // dup
       final dupEntry = entry.copyWith(

@@ -44,7 +44,7 @@ flutter run -d chrome
 - Add role-based access (e.g., Employee vs Manager views)
 
 ## Current Status
-Fully functional app with Firebase backend, seeded test data, and secure authentication. All core screens and logic implemented exactly as per your final mockups. Ready for production deployment.
+Fully functional app with Firebase backend, and secure authentication. All core screens and logic implemented exactly as per your final mockups. Ready for production deployment.
 
 **Recent Update (April 25, 2026)**: Integrated Firebase Authentication for secure manager login, replacing insecure plain-password check. App now persists login sessions and uses proper auth state management.
 

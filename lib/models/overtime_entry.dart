@@ -18,6 +18,7 @@ class OvertimeEntry {
   final String status; // Pending, Approved, Cancelled
   final DateTime? dateEntered; // When entry was created
   final String? enteredBy; // Who created the entry
+  final String? overtimeNumber; // Auto-incrementing number like #4521
 
   OvertimeEntry({
     String? id,
@@ -36,6 +37,7 @@ class OvertimeEntry {
     this.status = 'Pending',
     this.dateEntered,
     this.enteredBy,
+    this.overtimeNumber,
   }) : id = id ?? const Uuid().v4();
 
   double get hours {
@@ -58,6 +60,7 @@ class OvertimeEntry {
         'status': status,
         'dateEntered': dateEntered != null ? Timestamp.fromDate(dateEntered!) : FieldValue.serverTimestamp(),
         'enteredBy': enteredBy,
+        'overtimeNumber': overtimeNumber,
       };
 
   factory OvertimeEntry.fromMap(Map<String, dynamic> map, String id) => OvertimeEntry(
@@ -77,6 +80,7 @@ class OvertimeEntry {
         status: map['status'] ?? 'Pending',
         dateEntered: map['dateEntered'] != null ? (map['dateEntered'] as Timestamp).toDate() : null,
         enteredBy: map['enteredBy'],
+        overtimeNumber: map['overtimeNumber'],
       );
 
   OvertimeEntry copyWith({
@@ -96,6 +100,7 @@ class OvertimeEntry {
     String? status,
     DateTime? dateEntered,
     String? enteredBy,
+    String? overtimeNumber,
   }) {
     return OvertimeEntry(
       id: id ?? this.id,
@@ -114,6 +119,7 @@ class OvertimeEntry {
       status: status ?? this.status,
       dateEntered: dateEntered ?? this.dateEntered,
       enteredBy: enteredBy ?? this.enteredBy,
+      overtimeNumber: overtimeNumber ?? this.overtimeNumber,
     );
   }
 }
