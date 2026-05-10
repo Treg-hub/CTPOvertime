@@ -24,6 +24,25 @@ class DataService {
     return snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList();
   }
 
+  // NEW for future scaling: server-side filtered stream by department and status
+  // (avoids client-side loading of entire collection when dataset grows large;
+  // add composite index on (department, status, startTime desc) in Firestore for performance)
+  static Stream<List<OvertimeEntry>> getFilteredOvertimeStream({String? department, String status = 'Pending', int limit = 50}) {
+    Query<Map<String, dynamic>> query = _firestore
+        .collection('overtime_entries')
+        .orderBy('startTime', descending: true)
+        .limit(limit);
+
+    if (department != null && department.isNotEmpty && department != 'All') {
+      query = query.where('department', isEqualTo: department);
+    }
+    if (status.isNotEmpty && status != 'All') {
+      query = query.where('status', isEqualTo: status);
+    }
+    return query.snapshots().map((snapshot) =>
+        snapshot.docs.map((doc) => OvertimeEntry.fromMap(doc.data(), doc.id)).toList());
+  }
+
   static Future<List<OvertimeEntry>> getRecentOvertime({int limit = 25}) async {
     final snapshot = await _firestore
         .collection('overtime_entries')

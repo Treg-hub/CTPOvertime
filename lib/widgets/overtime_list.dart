@@ -61,9 +61,9 @@ class OvertimeList extends StatelessWidget {
                 ),
                 if (onDelete != null)
                   IconButton(
-                    icon: const Icon(Icons.delete),
+                    icon: const Icon(Icons.cancel), // was Icons.delete
                     onPressed: () => onDelete!(entry),
-                    tooltip: 'Delete Entry',
+                    tooltip: 'Cancel Entry (audit trail - not deleted)',
                   ),
               ],
             ),

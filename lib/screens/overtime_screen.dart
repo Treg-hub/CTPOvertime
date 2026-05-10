@@ -294,8 +294,29 @@ class OvertimeListPanel extends StatefulWidget {
 }
 
 class _OvertimeListPanelState extends State<OvertimeListPanel> {
-  late final Stream<List<OvertimeEntry>> _stream = DataService.getRecentOvertimeStream(limit: 50);
+  String _selectedStatus = 'Pending'; // Default to pending only as requested
+  late Stream<List<OvertimeEntry>> _stream;
   bool _hasLoadedInitially = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateStream();
+  }
+
+  void _updateStream() {
+    _stream = DataService.getFilteredOvertimeStream(
+      department: widget.currentUserDept, // ALWAYS current manager's dept
+      status: _selectedStatus,
+    );
+  }
+
+  void _onStatusChanged(String status) {
+    setState(() {
+      _selectedStatus = status;
+      _updateStream();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -318,8 +339,7 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
         }
 
         if (_hasLoadedInitially && hasData) {
-          final filteredEntries = widget.selectedDept == 'All' ? entries : entries.where((e) => e.department == widget.selectedDept).toList();
-          final depts = ['All', ...entries.map((e) => e.department).toSet().toList()..sort()];
+          final filteredEntries = entries; // already filtered server-side by dept + status
 
           return Card(
             margin: const EdgeInsets.all(16),
@@ -330,14 +350,19 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
                   child: Row(
                     children: [
                       Text(
-                        'Overtime List (${filteredEntries.length})',
+                        'Overtime List - ${widget.currentUserDept} (${filteredEntries.length})',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const Spacer(),
+                      // Status dropdown (replaces old dept dropdown)
                       DropdownButton<String>(
-                        value: depts.contains(widget.selectedDept) ? widget.selectedDept : 'All',
-                        items: depts.map((d) => DropdownMenuItem(value: d, child: Text(d == 'All' ? 'All Depts' : d))).toList(),
-                        onChanged: (value) => widget.onDeptChanged(value!),
+                        value: _selectedStatus,
+                        items: const [
+                          DropdownMenuItem(value: 'Pending', child: Text('Pending')),
+                          DropdownMenuItem(value: 'Approved', child: Text('Approved')),
+                          DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
+                        ],
+                        onChanged: (value) => _onStatusChanged(value!),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
@@ -357,31 +382,30 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
                     entries: filteredEntries,
                     onSelect: widget.onSelect,
                     onDelete: (entry) {
-                      if (entry.department != widget.currentUserDept) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Cannot delete entries from other departments. Switch dropdown to your department.')),
-                        );
-                        return;
-                      }
+                      // Changed to CANCEL for audit trail (never delete)
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text('Delete Entry'),
-                          content: const Text('Are you sure you want to delete this overtime entry?'),
+                          title: const Text('Cancel Entry'),
+                          content: const Text('Are you sure you want to CANCEL this overtime entry? (It will be marked Cancelled for audit - not deleted)'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('Cancel'),
+                              child: const Text('Keep'),
                             ),
                             ElevatedButton(
                               onPressed: () async {
-                                await DataService.deleteOvertime(entry.id);
+                                final cancelled = entry.copyWith(status: 'Cancelled');
+                                await DataService.updateOvertime(cancelled);
                                 Navigator.of(context).pop();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Entry deleted')),
+                                  const SnackBar(content: Text('Entry cancelled (moved to Cancelled status for audit)')),
                                 );
+                                if (_selectedStatus != 'Cancelled') {
+                                  _onStatusChanged('Cancelled');
+                                }
                               },
-                              child: const Text('Delete'),
+                              child: const Text('Cancel Entry'),
                             ),
                           ],
                         ),
@@ -404,7 +428,7 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
 
         return const Card(
           margin: EdgeInsets.all(16),
-          child: Center(child: Text('No overtime entries found')),
+          child: Center(child: Text('No overtime entries found for your department in this status')),
         );
       },
     );
@@ -470,57 +494,64 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isSmall = constraints.maxWidth < 800;
-        return isSmall ? Column(
-          children: [
-            Expanded(
-              flex: 5,
-              child: OvertimeFormPanel(
-                initialEntry: _selectedEntry,
-                onSave: (entry) {},
-                onEntryChanged: _onFormEntryChanged,
-                reasonSuggestions: _reasonSuggestions,
-                onSuggestionsChanged: _onSuggestionsChanged,
-                selectedDept: _selectedDept,
-                currentUserDept: _currentUserDept,
-              ),
-            ),
-            Expanded(
-              flex: 6,
-              child: OvertimeListPanel(
-                onSelect: _selectEntry,
-                selectedId: _selectedEntry?.id,
-                selectedDept: _selectedDept,
-                onDeptChanged: _onDeptChanged,
-                currentUserDept: _currentUserDept,
-              ),
-            ),
-          ],
-        ) : Row(
-          children: [
-            Expanded(
-              flex: 5,
-              child: OvertimeFormPanel(
-                initialEntry: _selectedEntry,
-                onSave: (entry) {},
-                onEntryChanged: _onFormEntryChanged,
-                reasonSuggestions: _reasonSuggestions,
-                onSuggestionsChanged: _onSuggestionsChanged,
-                selectedDept: _selectedDept,
-                currentUserDept: _currentUserDept,
-              ),
-            ),
-            Expanded(
-              flex: 6,
-              child: OvertimeListPanel(
-                onSelect: _selectEntry,
-                selectedId: _selectedEntry?.id,
-                selectedDept: _selectedDept,
-                onDeptChanged: _onDeptChanged,
-                currentUserDept: _currentUserDept,
-              ),
-            ),
-          ],
-        );
+        return isSmall
+            ? Column(
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView( // Prevents render/overflow when minimizing window
+                      child: SizedBox(
+                        height: 600,
+                        child: OvertimeFormPanel(
+                          initialEntry: _selectedEntry,
+                          onSave: (entry) {},
+                          onEntryChanged: _onFormEntryChanged,
+                          reasonSuggestions: _reasonSuggestions,
+                          onSuggestionsChanged: _onSuggestionsChanged,
+                          selectedDept: _selectedDept,
+                          currentUserDept: _currentUserDept,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 6,
+                    child: OvertimeListPanel(
+                      onSelect: _selectEntry,
+                      selectedId: _selectedEntry?.id,
+                      selectedDept: _selectedDept,
+                      onDeptChanged: _onDeptChanged,
+                      currentUserDept: _currentUserDept,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: OvertimeFormPanel(
+                      initialEntry: _selectedEntry,
+                      onSave: (entry) {},
+                      onEntryChanged: _onFormEntryChanged,
+                      reasonSuggestions: _reasonSuggestions,
+                      onSuggestionsChanged: _onSuggestionsChanged,
+                      selectedDept: _selectedDept,
+                      currentUserDept: _currentUserDept,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 6,
+                    child: OvertimeListPanel(
+                      onSelect: _selectEntry,
+                      selectedId: _selectedEntry?.id,
+                      selectedDept: _selectedDept,
+                      onDeptChanged: _onDeptChanged,
+                      currentUserDept: _currentUserDept,
+                    ),
+                  ),
+                ],
+              );
       },
     );
   }
