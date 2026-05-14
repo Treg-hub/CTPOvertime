@@ -1,26 +1,45 @@
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// Valid status values — use these constants everywhere instead of raw strings.
+class OTStatus {
+  static const pending = 'Pending';
+  static const workshopApproved = 'Workshop Approved';
+  static const approved = 'Approved';
+  static const cancelled = 'Cancelled';
+}
+
 class OvertimeEntry {
   final String id;
-  final String duNumber; // Job DU or empty for general
+  final String duNumber;
   final String clockNum;
   final String employeeName;
-  final String press; // Badenia, Wifag, Aurora, or empty
+  final String press;
   final DateTime date;
-  final String shiftType; // Day, Night, Custom
-  final String overtimeType; // Normal Time, 1.5 X 10 + 2 X 2, 2 X 12, Standby
+  final String shiftType;
+  final String overtimeType;
   final DateTime startTime;
   final DateTime endTime;
   final String department;
   final String reason;
   final String? description;
-  final String status; // Pending, Approved, Cancelled
-  final DateTime? dateEntered; // When entry was created
-  final String? enteredBy; // Who created the entry
-  final String? overtimeNumber; // Auto-incrementing number like #4521
-  // Each record: { editedBy, editedAt (ISO string), changes: { fieldName: { from, to } } }
+  final String status;
+  final DateTime? dateEntered;
+  final String? enteredBy;
+  final String? overtimeNumber;
   final List<Map<String, dynamic>> editHistory;
+
+  // ── Approval tracking ─────────────────────────────────────────────────────
+  final String? approvedBy;      // name of whoever gave final (GM) approval
+  final DateTime? approvedAt;    // timestamp of final approval
+
+  // ── Rejection tracking ────────────────────────────────────────────────────
+  final String? rejectionReason;    // set by Workshop Manager or GM on reject
+  final bool rejectedAcknowledged;  // true once the dept manager opens the entry
+
+  // ── Wages download tracking ───────────────────────────────────────────────
+  final bool downloadedByWages;  // true after included in a wages download
+  final DateTime? downloadedAt;  // when it was downloaded
 
   OvertimeEntry({
     String? id,
@@ -36,16 +55,25 @@ class OvertimeEntry {
     required this.department,
     required this.reason,
     this.description,
-    this.status = 'Pending',
+    this.status = OTStatus.pending,
     this.dateEntered,
     this.enteredBy,
     this.overtimeNumber,
     this.editHistory = const [],
+    this.approvedBy,
+    this.approvedAt,
+    this.rejectionReason,
+    this.rejectedAcknowledged = false,
+    this.downloadedByWages = false,
+    this.downloadedAt,
   }) : id = id ?? const Uuid().v4();
 
-  double get hours {
-    return endTime.difference(startTime).inMinutes / 60.0;
-  }
+  double get hours => endTime.difference(startTime).inMinutes / 60.0;
+
+  bool get isRejectedUnacknowledged =>
+      status == OTStatus.cancelled &&
+      (rejectionReason?.isNotEmpty ?? false) &&
+      !rejectedAcknowledged;
 
   Map<String, dynamic> toMap() => {
         'duNumber': duNumber,
@@ -61,34 +89,57 @@ class OvertimeEntry {
         'reason': reason,
         'description': description,
         'status': status,
-        'dateEntered': dateEntered != null ? Timestamp.fromDate(dateEntered!) : FieldValue.serverTimestamp(),
+        'dateEntered': dateEntered != null
+            ? Timestamp.fromDate(dateEntered!)
+            : FieldValue.serverTimestamp(),
         'enteredBy': enteredBy,
         'overtimeNumber': overtimeNumber,
         'editHistory': editHistory,
+        'approvedBy': approvedBy,
+        'approvedAt':
+            approvedAt != null ? Timestamp.fromDate(approvedAt!) : null,
+        'rejectionReason': rejectionReason,
+        'rejectedAcknowledged': rejectedAcknowledged,
+        'downloadedByWages': downloadedByWages,
+        'downloadedAt':
+            downloadedAt != null ? Timestamp.fromDate(downloadedAt!) : null,
       };
 
-  factory OvertimeEntry.fromMap(Map<String, dynamic> map, String id) => OvertimeEntry(
+  factory OvertimeEntry.fromMap(Map<String, dynamic> map, String id) =>
+      OvertimeEntry(
         id: id,
         duNumber: map['duNumber'] ?? '',
-        clockNum: map['clockNum'],
-        employeeName: map['employeeName'],
+        clockNum: map['clockNum'] ?? '',
+        employeeName: map['employeeName'] ?? '',
         press: map['press'] ?? '',
         date: (map['date'] as Timestamp).toDate(),
-        shiftType: map['shiftType'],
+        shiftType: map['shiftType'] ?? 'Day',
         overtimeType: map['overtimeType'] ?? 'Normal Time',
         startTime: (map['startTime'] as Timestamp).toDate(),
         endTime: (map['endTime'] as Timestamp).toDate(),
-        department: map['department'],
-        reason: map['reason'],
+        department: map['department'] ?? '',
+        reason: map['reason'] ?? '',
         description: map['description'],
-        status: map['status'] ?? 'Pending',
-        dateEntered: map['dateEntered'] != null ? (map['dateEntered'] as Timestamp).toDate() : null,
+        status: map['status'] ?? OTStatus.pending,
+        dateEntered: map['dateEntered'] != null
+            ? (map['dateEntered'] as Timestamp).toDate()
+            : null,
         enteredBy: map['enteredBy'],
         overtimeNumber: map['overtimeNumber'],
         editHistory: (map['editHistory'] as List<dynamic>?)
                 ?.map((e) => Map<String, dynamic>.from(e as Map))
                 .toList() ??
             [],
+        approvedBy: map['approvedBy'],
+        approvedAt: map['approvedAt'] != null
+            ? (map['approvedAt'] as Timestamp).toDate()
+            : null,
+        rejectionReason: map['rejectionReason'],
+        rejectedAcknowledged: map['rejectedAcknowledged'] as bool? ?? false,
+        downloadedByWages: map['downloadedByWages'] as bool? ?? false,
+        downloadedAt: map['downloadedAt'] != null
+            ? (map['downloadedAt'] as Timestamp).toDate()
+            : null,
       );
 
   OvertimeEntry copyWith({
@@ -110,6 +161,12 @@ class OvertimeEntry {
     String? enteredBy,
     String? overtimeNumber,
     List<Map<String, dynamic>>? editHistory,
+    String? approvedBy,
+    DateTime? approvedAt,
+    String? rejectionReason,
+    bool? rejectedAcknowledged,
+    bool? downloadedByWages,
+    DateTime? downloadedAt,
   }) {
     return OvertimeEntry(
       id: id ?? this.id,
@@ -130,6 +187,12 @@ class OvertimeEntry {
       enteredBy: enteredBy ?? this.enteredBy,
       overtimeNumber: overtimeNumber ?? this.overtimeNumber,
       editHistory: editHistory ?? this.editHistory,
+      approvedBy: approvedBy ?? this.approvedBy,
+      approvedAt: approvedAt ?? this.approvedAt,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      rejectedAcknowledged: rejectedAcknowledged ?? this.rejectedAcknowledged,
+      downloadedByWages: downloadedByWages ?? this.downloadedByWages,
+      downloadedAt: downloadedAt ?? this.downloadedAt,
     );
   }
 }
