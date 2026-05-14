@@ -19,6 +19,8 @@ class OvertimeEntry {
   final DateTime? dateEntered; // When entry was created
   final String? enteredBy; // Who created the entry
   final String? overtimeNumber; // Auto-incrementing number like #4521
+  // Each record: { editedBy, editedAt (ISO string), changes: { fieldName: { from, to } } }
+  final List<Map<String, dynamic>> editHistory;
 
   OvertimeEntry({
     String? id,
@@ -38,6 +40,7 @@ class OvertimeEntry {
     this.dateEntered,
     this.enteredBy,
     this.overtimeNumber,
+    this.editHistory = const [],
   }) : id = id ?? const Uuid().v4();
 
   double get hours {
@@ -61,6 +64,7 @@ class OvertimeEntry {
         'dateEntered': dateEntered != null ? Timestamp.fromDate(dateEntered!) : FieldValue.serverTimestamp(),
         'enteredBy': enteredBy,
         'overtimeNumber': overtimeNumber,
+        'editHistory': editHistory,
       };
 
   factory OvertimeEntry.fromMap(Map<String, dynamic> map, String id) => OvertimeEntry(
@@ -81,6 +85,10 @@ class OvertimeEntry {
         dateEntered: map['dateEntered'] != null ? (map['dateEntered'] as Timestamp).toDate() : null,
         enteredBy: map['enteredBy'],
         overtimeNumber: map['overtimeNumber'],
+        editHistory: (map['editHistory'] as List<dynamic>?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [],
       );
 
   OvertimeEntry copyWith({
@@ -101,6 +109,7 @@ class OvertimeEntry {
     DateTime? dateEntered,
     String? enteredBy,
     String? overtimeNumber,
+    List<Map<String, dynamic>>? editHistory,
   }) {
     return OvertimeEntry(
       id: id ?? this.id,
@@ -120,6 +129,7 @@ class OvertimeEntry {
       dateEntered: dateEntered ?? this.dateEntered,
       enteredBy: enteredBy ?? this.enteredBy,
       overtimeNumber: overtimeNumber ?? this.overtimeNumber,
+      editHistory: editHistory ?? this.editHistory,
     );
   }
 }
