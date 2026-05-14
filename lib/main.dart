@@ -11,8 +11,11 @@ import 'package:ctp_overtime_tracker/screens/job_analysis_screen.dart';
 import 'package:ctp_overtime_tracker/screens/calendar_view_screen.dart';
 import 'package:ctp_overtime_tracker/screens/dashboard_screen.dart';
 import 'package:ctp_overtime_tracker/screens/approval_screen.dart';
+import 'package:ctp_overtime_tracker/screens/wages_screen.dart';
 import 'package:ctp_overtime_tracker/screens/settings_screen.dart';
+import 'dart:async';
 import 'package:ctp_overtime_tracker/screens/login_screen.dart';
+import 'package:ctp_overtime_tracker/services/data_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
@@ -81,43 +84,45 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fetches manager profile from Firestore for the given Firebase user.
-  /// If found, logs in the user. If not, sets error and signs out.
+  /// Fetches employee profile from Firestore for the given Firebase user.
+  /// Allows Manager and Wages positions; rejects everything else.
   Future<void> loadFromFirebase(firebase_auth.User firebaseUser) async {
     setLoading(true);
-    setAuthError(null); // Clear previous errors
+    setAuthError(null);
 
     try {
       final uid = firebaseUser.uid;
-      print('AuthWrapper: Loading profile for UID: $uid'); // Debug
 
+      // Query by UID only — no position filter so Wages can log in too.
       final snapshot = await FirebaseFirestore.instance
           .collection('employees')
           .where('uid', isEqualTo: uid)
-          .where('position', isEqualTo: 'Manager')
           .limit(1)
           .get();
 
-      print('AuthWrapper: Query returned ${snapshot.docs.length} docs'); // Debug
-
       if (snapshot.docs.isNotEmpty) {
-        print('AuthWrapper: First doc data: ${snapshot.docs.first.data()}'); // Debug
-        final appUser = User.fromMap(snapshot.docs.first.data(), snapshot.docs.first.id);
-        login(appUser);
-        print('AuthWrapper: Logged in user: ${appUser.name}'); // Debug
+        final data = snapshot.docs.first.data();
+        final position = data['position'] as String? ?? '';
+
+        if (position == 'Manager' || position == 'Wages') {
+          final appUser =
+              User.fromMap(data, snapshot.docs.first.id);
+          login(appUser);
+        } else {
+          setAuthError(
+              'Access denied. Only managers and wages staff can use this app.');
+          await firebase_auth.FirebaseAuth.instance.signOut();
+        }
       } else {
-        print('AuthWrapper: No documents found for UID: $uid, position: Manager'); // Debug
-        setAuthError('No manager profile found for this account. Contact admin.');
+        setAuthError(
+            'No employee profile found for this account. Contact admin.');
         await firebase_auth.FirebaseAuth.instance.signOut();
-        print('AuthWrapper: No manager profile found, signed out'); // Debug
       }
     } catch (e) {
       setAuthError('Error loading profile: ${e.toString()}');
       await firebase_auth.FirebaseAuth.instance.signOut();
-      print('AuthWrapper: Error loading profile: $e'); // Debug
     } finally {
       setLoading(false);
-      print('AuthWrapper: Loading complete'); // Debug
     }
   }
 }
@@ -201,29 +206,133 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
+  int _rejectionCount = 0;
+  StreamSubscription<int>? _rejectionSub;
 
-  final List<Widget> _screens = [
-    const DashboardScreen(),
-    const OvertimeScreen(),
-    const JobsScreen(),
-    const JobAnalysisScreen(),
-    const CalendarViewScreen(),
-    const ApprovalScreen(),
-    const SettingsScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _setupRejectionBadge());
+  }
+
+  void _setupRejectionBadge() {
+    final user =
+        Provider.of<UserProvider>(context, listen: false).currentUser;
+    // Only dept managers and workshop managers can have their submitted
+    // entries rejected — wire up the badge for those roles.
+    if (user == null ||
+        user.role == AppRole.wages ||
+        user.role == AppRole.generalManager) return;
+
+    _rejectionSub =
+        DataService.getRejectedUnacknowledgedCount(user.department)
+            .listen((n) {
+      if (mounted) {
+        setState(() => _rejectionCount = n);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _rejectionSub?.cancel();
+    super.dispose();
+  }
+
+  // Build the screen list based on the user's role.
+  List<Widget> _buildScreens(AppRole role) {
+    if (role == AppRole.wages) {
+      return [
+        const WagesScreen(),
+        const SettingsScreen(),
+      ];
+    }
+    return [
+      const DashboardScreen(),
+      const OvertimeScreen(),
+      const JobsScreen(),
+      const JobAnalysisScreen(),
+      const CalendarViewScreen(),
+      if (role == AppRole.workshopManager || role == AppRole.generalManager)
+        const ApprovalScreen(),
+      const SettingsScreen(),
+    ];
+  }
+
+  List<BottomNavigationBarItem> _buildNavItems(AppRole role) {
+    final overtimeIcon = _rejectionCount > 0
+        ? Badge(
+            label: Text('$_rejectionCount'),
+            child: const Icon(Icons.access_time),
+          )
+        : const Icon(Icons.access_time);
+
+    if (role == AppRole.wages) {
+      return const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.download),
+          label: 'Download',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.settings),
+          label: 'Settings',
+        ),
+      ];
+    }
+
+    return [
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.dashboard),
+        label: 'Dashboard',
+      ),
+      BottomNavigationBarItem(
+        icon: overtimeIcon,
+        label: 'Overtime',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.work),
+        label: 'Jobs',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.analytics),
+        label: 'Analysis',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.calendar_month),
+        label: 'Calendar',
+      ),
+      if (role == AppRole.workshopManager || role == AppRole.generalManager)
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.task_alt),
+          label: 'Approval',
+        ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.settings),
+        label: 'Settings',
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.currentUser;
+    final role = user?.role ?? AppRole.deptManager;
+
+    final screens = _buildScreens(role);
+    final navItems = _buildNavItems(role);
+
+    // Guard against stale index after role changes.
+    final safeIndex = _selectedIndex.clamp(0, screens.length - 1);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('CTP Gravure Overtime'),
         actions: [
           IconButton(
-            icon: Icon(themeProvider.isDark ? Icons.light_mode : Icons.dark_mode),
+            icon: Icon(
+                themeProvider.isDark ? Icons.light_mode : Icons.dark_mode),
             onPressed: () => themeProvider.toggleTheme(),
             tooltip: 'Toggle Dark/Light Mode',
           ),
@@ -235,20 +344,21 @@ class _MainNavigationState extends State<MainNavigation> {
                   await firebase_auth.FirebaseAuth.instance.signOut();
                   userProvider.logout();
                 } catch (e) {
-                  print('Logout error: $e');
+                  // ignore logout errors
                 }
               }
             },
             itemBuilder: (context) => [
               PopupMenuItem<String>(
                 value: 'user',
+                enabled: false,
                 child: Row(
                   children: [
                     CircleAvatar(
                       radius: 16,
                       backgroundColor: Colors.blue.shade100,
                       child: Text(
-                        user?.name[0] ?? 'M',
+                        user?.name.isNotEmpty == true ? user!.name[0] : 'U',
                         style: const TextStyle(color: Colors.blue),
                       ),
                     ),
@@ -256,10 +366,11 @@ class _MainNavigationState extends State<MainNavigation> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user?.name ?? 'Manager'),
+                        Text(user?.name ?? 'User'),
                         Text(
-                          user?.department ?? 'Department',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          _roleLabel(role),
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -282,7 +393,7 @@ class _MainNavigationState extends State<MainNavigation> {
               radius: 16,
               backgroundColor: Colors.blue.shade100,
               child: Text(
-                user?.name[0] ?? 'M',
+                user?.name.isNotEmpty == true ? user!.name[0] : 'U',
                 style: const TextStyle(color: Colors.blue),
               ),
             ),
@@ -290,44 +401,28 @@ class _MainNavigationState extends State<MainNavigation> {
           const SizedBox(width: 16),
         ],
       ),
-      body: _screens[_selectedIndex],
+      body: screens[safeIndex],
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
+        currentIndex: safeIndex,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppTheme.primaryOrange,
         unselectedItemColor: Colors.grey[400]!,
         onTap: (index) => setState(() => _selectedIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.access_time),
-            label: 'Overtime',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.work),
-            label: 'Jobs',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics),
-            label: 'Analysis',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month),
-            label: 'Calendar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.task_alt),
-            label: 'Approval',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+        items: navItems,
       ),
     );
+  }
+
+  String _roleLabel(AppRole role) {
+    switch (role) {
+      case AppRole.generalManager:
+        return 'General Manager';
+      case AppRole.workshopManager:
+        return 'Workshop Manager';
+      case AppRole.wages:
+        return 'Wages';
+      case AppRole.deptManager:
+        return 'Department Manager';
+    }
   }
 }

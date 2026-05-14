@@ -31,102 +31,219 @@ class OvertimeList extends StatelessWidget {
 
         return Card(
           key: ValueKey(entry.id),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           color: isSelected
               ? Theme.of(context).colorScheme.primaryContainer
               : null,
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: entry.press == 'Badenia'
-                  ? Colors.green
-                  : entry.press == 'Wifag'
-                      ? Colors.orange
-                      : Colors.blue,
-              child: Text(entry.press.isNotEmpty ? entry.press[0] : 'G'),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${entry.employeeName} (${entry.clockNum})',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // Badge shown when the entry has been edited after approval
-                if (wasEdited)
-                  Tooltip(
-                    message: _buildEditTooltip(entry),
-                    child: Container(
-                      margin: const EdgeInsets.only(left: 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade100,
-                        border: Border.all(color: Colors.blue.shade300),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_note,
-                              size: 12, color: Colors.blue.shade700),
-                          const SizedBox(width: 3),
-                          Text(
-                            'Edited',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => onSelect(entry),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // ── Press avatar ──────────────────────────────
+                  CircleAvatar(
+                    backgroundColor: _pressColor(entry.press),
+                    radius: 20,
+                    child: Text(
+                      entry.press.isNotEmpty ? entry.press[0] : 'G',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
-              ],
-            ),
-            subtitle: Text(
-              '${entry.overtimeNumber ?? 'N/A'} • '
-              '${DateFormat('yyyy-MM-dd').format(entry.date)} • '
-              '${entry.shiftType} • '
-              '${entry.department} • '
-              '${entry.hours.toStringAsFixed(1)} hrs',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: entry.status == 'Approved'
-                        ? Colors.green.shade800
-                        : entry.status == 'Pending'
-                            ? Colors.orange.shade800
-                            : Colors.red.shade800,
-                    borderRadius: BorderRadius.circular(16),
+                  const SizedBox(width: 12),
+
+                  // ── Main content ──────────────────────────────
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Row 1: Name · Clock  |  Edited  Shift  Status
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${entry.employeeName}  ·  ${entry.clockNum}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                        fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            if (wasEdited) _editedBadge(context, entry),
+                            if (wasEdited) const SizedBox(width: 4),
+                            _shiftBadge(entry.shiftType),
+                            const SizedBox(width: 4),
+                            _statusBadge(entry.status),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+
+                        // Row 2: OT# · Date · Dept · Press  |  Hours
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _buildMeta(entry),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: Colors.grey.shade600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${entry.hours.toStringAsFixed(1)}h',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                            ),
+                          ],
+                        ),
+
+                        // Row 3: OT type — Reason
+                        if (entry.reason.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              '${entry.overtimeType} — ${entry.reason}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: Colors.grey.shade500),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  child: Text(
-                    entry.status,
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-                if (onDelete != null)
-                  IconButton(
-                    icon: const Icon(Icons.cancel),
-                    onPressed: () => onDelete!(entry),
-                    tooltip: 'Cancel Entry (audit trail – not deleted)',
-                  ),
-              ],
+
+                  // ── Cancel button ─────────────────────────────
+                  if (onDelete != null)
+                    IconButton(
+                      icon: Icon(Icons.cancel_outlined,
+                          size: 18, color: Colors.grey.shade400),
+                      onPressed: () => onDelete!(entry),
+                      tooltip: 'Cancel Entry (audit trail – not deleted)',
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                ],
+              ),
             ),
-            onTap: () => onSelect(entry),
           ),
         );
       },
     );
   }
 
-  /// Build a hover tooltip summarising the most recent edit.
+  String _buildMeta(OvertimeEntry entry) {
+    final parts = <String>[
+      entry.overtimeNumber ?? 'N/A',
+      DateFormat('dd MMM yyyy').format(entry.date),
+      entry.department,
+      if (entry.press.isNotEmpty) entry.press,
+    ];
+    return parts.join(' · ');
+  }
+
+  Color _pressColor(String press) {
+    switch (press) {
+      case 'Badenia':
+        return const Color(0xFF4CAF50);
+      case 'Wifag':
+        return const Color(0xFFFF9800);
+      case 'Aurora':
+        return const Color(0xFF2196F3);
+      default:
+        return Colors.grey.shade500;
+    }
+  }
+
+  Widget _shiftBadge(String shiftType) {
+    final isNight = shiftType == 'Night';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isNight ? Colors.indigo.shade700 : Colors.orange.shade700,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        isNight ? 'Night' : 'Day',
+        style: const TextStyle(
+            color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _statusBadge(String status) {
+    final Color color;
+    switch (status) {
+      case 'Approved':
+        color = Colors.green.shade700;
+        break;
+      case 'Pending':
+        color = Colors.amber.shade800;
+        break;
+      default:
+        color = Colors.red.shade700;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        status,
+        style: const TextStyle(
+            color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _editedBadge(BuildContext context, OvertimeEntry entry) {
+    return Tooltip(
+      message: _buildEditTooltip(entry),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade100,
+          border: Border.all(color: Colors.blue.shade300),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.edit_note, size: 11, color: Colors.blue.shade700),
+            const SizedBox(width: 2),
+            Text(
+              'Edited',
+              style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _buildEditTooltip(OvertimeEntry entry) {
     if (entry.editHistory.isEmpty) return '';
     final fmt = DateFormat('dd MMM yyyy HH:mm');

@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:ctp_overtime_tracker/models/overtime_entry.dart';
 import 'package:ctp_overtime_tracker/services/data_service.dart';
@@ -332,7 +336,13 @@ class OvertimeListPanel extends StatefulWidget {
 
 class _OvertimeListPanelState extends State<OvertimeListPanel> {
   String _selectedStatus = 'Pending';
+  String _dateRangeLabel = 'Last 7 Days';
+  DateTimeRange? _customDateRange;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
   late Stream<List<OvertimeEntry>> _stream;
+  late Stream<List<OvertimeEntry>> _rejectedStream;
   bool _hasLoadedInitially = false;
 
   @override
@@ -341,11 +351,55 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
     _updateStream();
   }
 
+  @override
+  void didUpdateWidget(covariant OvertimeListPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentUserDept != widget.currentUserDept) {
+      setState(() => _updateStream());
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _updateStream() {
+    final range = _getDateRange();
     _stream = DataService.getFilteredOvertimeStream(
       department: widget.currentUserDept,
       status: _selectedStatus,
+      dateFrom: range.$1,
+      dateTo: range.$2,
     );
+    _rejectedStream = widget.currentUserDept.isNotEmpty && widget.currentUserDept != 'All'
+        ? DataService.getRejectedUnacknowledgedStream(widget.currentUserDept)
+        : const Stream.empty();
+  }
+
+  (DateTime?, DateTime?) _getDateRange() {
+    final now = DateTime.now();
+    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    switch (_dateRangeLabel) {
+      case 'Last 7 Days':
+        return (now.subtract(const Duration(days: 7)), endOfToday);
+      case 'This Month':
+        return (DateTime(now.year, now.month, 1), endOfToday);
+      case 'All Time':
+        return (null, null);
+      case 'Custom':
+        if (_customDateRange != null) {
+          return (
+            _customDateRange!.start,
+            DateTime(_customDateRange!.end.year, _customDateRange!.end.month,
+                _customDateRange!.end.day, 23, 59, 59),
+          );
+        }
+        return (null, null);
+      default:
+        return (now.subtract(const Duration(days: 7)), endOfToday);
+    }
   }
 
   void _onStatusChanged(String status) {
@@ -355,153 +409,442 @@ class _OvertimeListPanelState extends State<OvertimeListPanel> {
     });
   }
 
+  Future<void> _pickCustomDateRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: _customDateRange,
+    );
+    if (range != null && mounted) {
+      setState(() {
+        _customDateRange = range;
+        _dateRangeLabel = 'Custom';
+        _updateStream();
+      });
+    }
+  }
+
+  void _exportCsv(List<OvertimeEntry> entries) {
+    final fmt = DateFormat('yyyy-MM-dd');
+    final timeFmt = DateFormat('HH:mm');
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'OT Number,Date,Employee,Clock,Department,Press,Shift Type,OT Type,Start,End,Hours,Status,Entered By,Reason,Description',
+    );
+    for (final e in entries) {
+      final row = [
+        e.overtimeNumber ?? '',
+        fmt.format(e.date),
+        e.employeeName,
+        e.clockNum,
+        e.department,
+        e.press,
+        e.shiftType,
+        e.overtimeType,
+        timeFmt.format(e.startTime),
+        timeFmt.format(e.endTime),
+        e.hours.toStringAsFixed(2),
+        e.status,
+        e.enteredBy ?? '',
+        e.reason,
+        e.description ?? '',
+      ].map((v) => '"${v.toString().replaceAll('"', '""')}"').join(',');
+      buffer.writeln(row);
+    }
+
+    final bytes = utf8.encode(buffer.toString());
+    final blob = html.Blob([bytes], 'text/csv');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..setAttribute(
+        'download',
+        'overtime_${widget.currentUserDept}_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv',
+      )
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  void _showCancelDialog(BuildContext context, OvertimeEntry entry) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Entry'),
+        content: const Text(
+          'Are you sure you want to CANCEL this overtime entry? '
+          '(It will be marked Cancelled for audit — not deleted)',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Keep'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final cancelled = entry.copyWith(status: 'Cancelled');
+              await DataService.updateOvertime(cancelled);
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Entry cancelled (moved to Cancelled for audit)')),
+              );
+              if (_selectedStatus != 'Cancelled') {
+                _onStatusChanged('Cancelled');
+              }
+            },
+            child: const Text('Cancel Entry'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<OvertimeEntry>>(
-      stream: _stream,
+      stream: _rejectedStream,
       initialData: const [],
-      builder: (context, snapshot) {
-        final entries = snapshot.data ?? [];
-        final hasData = entries.isNotEmpty;
+      builder: (context, rejectedSnapshot) {
+        final rejectedEntries = rejectedSnapshot.data ?? [];
 
-        if (hasData && !_hasLoadedInitially) {
-          _hasLoadedInitially = true;
-        }
+        return StreamBuilder<List<OvertimeEntry>>(
+          stream: _stream,
+          initialData: const [],
+          builder: (context, snapshot) {
+            final entries = snapshot.data ?? [];
 
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !_hasLoadedInitially) {
-          return const Card(
-            margin: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
+            if (entries.isNotEmpty && !_hasLoadedInitially) {
+              _hasLoadedInitially = true;
+            }
 
-        if (snapshot.hasError) {
-          return Card(
-            margin: const EdgeInsets.all(16),
-            child: Center(
-              child: Text('Error loading entries: ${snapshot.error}'),
-            ),
-          );
-        }
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !_hasLoadedInitially) {
+              return const Card(
+                margin: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-        return Card(
-          margin: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Overtime – ${widget.currentUserDept} (${entries.length})',
-                        style: Theme.of(context).textTheme.titleLarge,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    DropdownButton<String>(
-                      value: _selectedStatus,
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'Pending', child: Text('Pending')),
-                        DropdownMenuItem(
-                            value: 'Approved', child: Text('Approved')),
-                        DropdownMenuItem(
-                            value: 'Cancelled', child: Text('Cancelled')),
-                      ],
-                      onChanged: (value) => _onStatusChanged(value!),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.download),
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Export feature coming soon')),
-                        );
-                      },
-                      tooltip: 'Export CSV',
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: hasData
-                    ? OvertimeList(
-                        entries: entries,
-                        onSelect: widget.onSelect,
-                        onDelete: (entry) {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Cancel Entry'),
-                              content: const Text(
-                                'Are you sure you want to CANCEL this overtime entry? '
-                                '(It will be marked Cancelled for audit — not deleted)',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(),
-                                  child: const Text('Keep'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    final cancelled =
-                                        entry.copyWith(status: 'Cancelled');
-                                    await DataService.updateOvertime(
-                                        cancelled);
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop();
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Entry cancelled (moved to Cancelled for audit)')),
-                                    );
-                                    if (_selectedStatus != 'Cancelled') {
-                                      _onStatusChanged('Cancelled');
-                                    }
-                                  },
-                                  child: const Text('Cancel Entry'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        selectedId: widget.selectedId,
-                      )
-                    // Fix: contextual empty state tells the manager why the list is empty
-                    : Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+            if (snapshot.hasError) {
+              return Card(
+                margin: const EdgeInsets.all(16),
+                child: Center(
+                    child: Text('Error loading entries: ${snapshot.error}')),
+              );
+            }
+
+            // Client-side search filter
+            final filtered = _searchQuery.isEmpty
+                ? entries
+                : entries.where((e) {
+                    final q = _searchQuery.toLowerCase();
+                    return e.employeeName.toLowerCase().contains(q) ||
+                        e.clockNum.toLowerCase().contains(q) ||
+                        (e.overtimeNumber ?? '').toLowerCase().contains(q) ||
+                        e.reason.toLowerCase().contains(q);
+                  }).toList();
+
+            return Card(
+              margin: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // ── Header ──────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(Icons.inbox_outlined,
-                                size: 48,
-                                color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            Text(
-                              'No ${_selectedStatus.toLowerCase()} entries for ${widget.currentUserDept}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                            if (_selectedStatus != 'Pending') ...[
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () =>
-                                    _onStatusChanged('Pending'),
-                                child:
-                                    const Text('Switch to Pending'),
+                            Expanded(
+                              child: Text(
+                                'Overtime – ${widget.currentUserDept} (${filtered.length})',
+                                style: Theme.of(context).textTheme.titleLarge,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
+                            ),
+                            // Date range
+                            DropdownButton<String>(
+                              value: _dateRangeLabel,
+                              underline: const SizedBox(),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'Last 7 Days',
+                                    child: Text('Last 7 Days')),
+                                DropdownMenuItem(
+                                    value: 'This Month',
+                                    child: Text('This Month')),
+                                DropdownMenuItem(
+                                    value: 'All Time', child: Text('All Time')),
+                                DropdownMenuItem(
+                                    value: 'Custom', child: Text('Custom…')),
+                              ],
+                              onChanged: (value) {
+                                if (value == 'Custom') {
+                                  _pickCustomDateRange();
+                                } else {
+                                  setState(() {
+                                    _dateRangeLabel = value!;
+                                    _updateStream();
+                                  });
+                                }
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            // Status
+                            DropdownButton<String>(
+                              value: _selectedStatus,
+                              underline: const SizedBox(),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'Pending', child: Text('Pending')),
+                                DropdownMenuItem(
+                                    value: 'Approved', child: Text('Approved')),
+                                DropdownMenuItem(
+                                    value: 'Cancelled',
+                                    child: Text('Cancelled')),
+                              ],
+                              onChanged: (value) => _onStatusChanged(value!),
+                            ),
+                            // Export
+                            IconButton(
+                              icon: const Icon(Icons.download),
+                              onPressed: filtered.isNotEmpty
+                                  ? () => _exportCsv(filtered)
+                                  : null,
+                              tooltip: 'Export CSV',
+                            ),
                           ],
                         ),
-                      ),
+                        // Search bar
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search name, clock, OT#, reason…',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 8),
+                            isDense: true,
+                          ),
+                          onChanged: (v) => setState(() => _searchQuery = v),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Pinned rejected section ──────────────────────
+                  if (rejectedEntries.isNotEmpty)
+                    _RejectedSection(
+                      entries: rejectedEntries,
+                      onTap: (entry) async {
+                        await DataService.acknowledgeRejection(entry.id);
+                        widget.onSelect(entry);
+                      },
+                    ),
+
+                  // ── Main list ────────────────────────────────────
+                  Expanded(
+                    child: filtered.isNotEmpty
+                        ? OvertimeList(
+                            entries: filtered,
+                            onSelect: widget.onSelect,
+                            onDelete: (entry) =>
+                                _showCancelDialog(context, entry),
+                            selectedId: widget.selectedId,
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.inbox_outlined,
+                                    size: 48, color: Colors.grey.shade400),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _searchQuery.isNotEmpty
+                                      ? 'No results for "$_searchQuery"'
+                                      : 'No ${_selectedStatus.toLowerCase()} entries for ${widget.currentUserDept}',
+                                  style:
+                                      TextStyle(color: Colors.grey.shade600),
+                                ),
+                                if (_searchQuery.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  TextButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                    child: const Text('Clear search'),
+                                  ),
+                                ] else if (_selectedStatus != 'Pending') ...[
+                                  const SizedBox(height: 8),
+                                  TextButton(
+                                    onPressed: () =>
+                                        _onStatusChanged('Pending'),
+                                    child: const Text('Switch to Pending'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pinned rejected-entry section shown at the top of the list regardless of
+// the active status/date filter. Disappears once all entries are acknowledged.
+
+class _RejectedSection extends StatelessWidget {
+  final List<OvertimeEntry> entries;
+  final Future<void> Function(OvertimeEntry) onTap;
+
+  const _RejectedSection({required this.entries, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Section header
+        Container(
+          color: Colors.red.shade900.withValues(alpha: 0.15),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  size: 16, color: Colors.red),
+              const SizedBox(width: 6),
+              Text(
+                'Rejected – tap to review & dismiss (${entries.length})',
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
-        );
-      },
+        ),
+        // Entries — constrained so they don't push the main list off screen
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: entries.length == 1 ? 80 : 160,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: entries.length,
+            itemBuilder: (context, i) =>
+                _RejectedCard(entry: entries[i], onTap: onTap),
+          ),
+        ),
+        const Divider(height: 1, thickness: 1),
+      ],
+    );
+  }
+}
+
+class _RejectedCard extends StatefulWidget {
+  final OvertimeEntry entry;
+  final Future<void> Function(OvertimeEntry) onTap;
+
+  const _RejectedCard({required this.entry, required this.onTap});
+
+  @override
+  State<_RejectedCard> createState() => _RejectedCardState();
+}
+
+class _RejectedCardState extends State<_RejectedCard> {
+  bool _loading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.entry;
+    final fmt = DateFormat('d MMM yyyy');
+    return InkWell(
+      onTap: _loading
+          ? null
+          : () async {
+              setState(() => _loading = true);
+              await widget.onTap(e);
+              if (mounted) setState(() => _loading = false);
+            },
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(left: BorderSide(color: Colors.red, width: 4)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        e.employeeName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (e.overtimeNumber != null) ...[
+                        const SizedBox(width: 6),
+                        Text(e.overtimeNumber!,
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.grey)),
+                      ],
+                      const SizedBox(width: 6),
+                      Text(fmt.format(e.date),
+                          style: const TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Rejected: ${e.rejectionReason}',
+                    style: const TextStyle(fontSize: 12, color: Colors.red),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (_loading)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              const Tooltip(
+                message: 'Tap row to acknowledge and open entry',
+                child: Icon(Icons.chevron_right, color: Colors.red),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
